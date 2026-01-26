@@ -544,8 +544,6 @@ namespace KinovaLiralab
         KORTEX::BaseCyclic::Command  base_command;
         auto actuator_config = KORTEX::ActuatorConfig::ActuatorConfigClient(_router);
 
-        std::vector<float> commands;
-
         auto servoing_mode = KORTEX::Base::ServoingModeInformation();
 
         int timer_count = 0;
@@ -554,15 +552,29 @@ namespace KinovaLiralab
 
         KDL::Vector gravity(0.0,0.0,-9.81);
         KDL::ChainDynParam dynSolver(_robotChain, gravity);
-        KDL::JntArray q(7);                         // [RAD]    current position not limited in range [0-2PI]
-        KDL::JntArray qPrev(7);                     // [RAD]    prev positions
-        KDL::JntArray qVel(7);                      // [RAD/s]  current velocity
-        KDL::JntArray eq(7);                        // [RAD]    equilibrium positions
-        KDL::JntArray eqVel(7);                     // [RAD/s]  equilibrium velocity
-        KDL::JntArray tau(7),g(7);
-        Eigen::VectorXd Kp(7), Kd(7);
-        Kp << 60, 50, 40, 30, 25, 10, 5;
-        Kd << 10,  5,  5,  3,  2,  1,  0.5;
+        KDL::JntArray tau(7),g(7),q(7);
+
+
+        /*
+        auto torque_offset_message = KORTEX::ActuatorConfig::TorqueOffset();
+        torque_offset_message.set_torque_offset(0.0);
+        auto torque_offset_message = KORTEX::ActuatorConfig::TorqueOffset();
+        torque_offset_message.set_torque_offset(0.0);
+        for(int i = 1; i <= 7; i++)
+        {
+            actuator_config.SetTorqueOffset(torque_offset_message, i);
+        }
+        usleep(1500000); // 1.5 second
+
+        for(int i = 1; i <= 7; i++)
+        {
+            std::cout << i << std::endl;
+            auto torque_offset = actuator_config.GetTorqueOffset(i);
+            std::cout << "TorqueOffset: " << torque_offset.torque_offset() << std::endl;
+        }
+        return;
+        */
+
         try
         {
             // Set the base in low-level servoing mode
@@ -573,14 +585,9 @@ namespace KinovaLiralab
             // Initialize each actuator to their current position
             for (unsigned int i = 0; i < actuator_count; i++)
             {
-                commands.push_back(base_feedback.actuators(i).position());
-
                 // Save the current actuator position, to avoid a following error
                 base_command.add_actuators()->set_position(base_feedback.actuators(i).position());
                 q(i)        = base_feedback.actuators(i).position() * M_PI / 180.0;
-                qPrev(i)    = base_feedback.actuators(i).position() * M_PI / 180.0;
-                eq(i)       = base_feedback.actuators(i).position() * M_PI / 180.0;
-                eqVel(i)    = 0;
             }
 
             // Send a first frame
@@ -594,7 +601,7 @@ namespace KinovaLiralab
                 actuator_config.SetControlMode(control_mode_message, i);
 
             // Real-time loop
-            while (timer_count < (10 * 1000))
+            while (timer_count < (10.5 * 1000))
             {
                 now = GetTickUs();
                 if (now - last > 1000)
@@ -606,25 +613,13 @@ namespace KinovaLiralab
                         //        actuator continues to move under torque command, resulting position error with command will
                         //        trigger a following error and switch back the actuator in position command to hold its position
                         base_command.mutable_actuators(i)->set_position(base_feedback.actuators(i).position());
-
-                        /* --- Current angle in range [0,2PI] --- */
-                        double currQ = base_feedback.actuators(i).position() * M_PI / 180.0;
-                        
-                        /* --- Unwrap angles --- */
-                        double delta = currQ - qPrev(i);
-                        if(delta > M_PI) delta -= 2.0 * M_PI;
-                        else if (delta < -M_PI) delta += 2.0 * M_PI;
-
-                        /* --- Update angles with unwrapped angles --- */
-                        qPrev(i) = currQ;
-                        q(i) += delta;
-                        qVel(i) = base_feedback.actuators(i).velocity() * M_PI / 180.0;
+                        q(i) = base_feedback.actuators(i).position() * M_PI / 180.0;
                     }
 
                     /* --- Get gravity compensation --- */
                     dynSolver.JntToGravity(q,g);
                     for(int i=0;i<7;i++)
-                        tau(i) = g(i) + Kp(i) * (eq(i) - q(i)) + Kd(i) * (eqVel(i) - qVel(i));
+                        tau(i) = g(i);
 
                     /* --- Saturate torque --- */
                     double tau_max[7] = {30,30,30,30,20,20,10};

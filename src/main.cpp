@@ -29,7 +29,7 @@ int main(int argc, char **argv)
 {
     KinovaLiralab::Robot* robot = new KinovaLiralab::Robot();
     //robot->GoHome();
-    robot->WeightlessMode();
+    robot->TorqueControlExample();
     /*
     auto start = std::chrono::high_resolution_clock::now();
         robot->EvaluateJacobian();
