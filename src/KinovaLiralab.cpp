@@ -37,7 +37,7 @@ namespace KinovaLiralab
         if(!kdl_parser::treeFromUrdfModel(_urdfModel, _kdlTree)) Print("[Error while parsing urdf]\n"); 
         else Print("[URDF Loaded]\n");
         _kdlTree.getChain("base_link","end_effector_link",_robotChain);
-        _kdlSolver = new KDL::ChainFkSolverPos_recursive(_robotChain);
+        _fkSolver = new KDL::ChainFkSolverPos_recursive(_robotChain);
 
         KDL::JntArray kdlJoints(_robotChain.getNrOfJoints());
         KORTEX::Base::JointAngles angles = _base->GetMeasuredJointAngles();
@@ -45,11 +45,12 @@ namespace KinovaLiralab
             kdlJoints(i) = angles.joint_angles(i).value() * M_PI / 180.0f;
 
         KDL::Frame eeFrame;
-        _kdlSolver->JntToCart(kdlJoints,eeFrame);
+        _fkSolver->JntToCart(kdlJoints,eeFrame);
         std::cout << eeFrame.p.x() << " , " << eeFrame.p.y() << " , " << eeFrame.p.z() << std::endl;
         // ---
         KORTEX::Base::Pose pose = _base->GetMeasuredCartesianPose();
         std::cout << pose.x() << " , " << pose.y() << " , " << pose.z() << std::endl;
+
         return;
 
         KDL::Jacobian jacobian(7);
@@ -85,7 +86,7 @@ namespace KinovaLiralab
         delete _sessionRealTime;
         delete _base;
         delete _baseRealTime;
-        delete _kdlSolver;
+        delete _fkSolver;
     }
 
     int64_t Robot::GetTickUs()
@@ -392,6 +393,7 @@ namespace KinovaLiralab
         int64_t last = 0;
 
         KDL::Vector gravity(0.0,0.0,-9.81);
+        KDL::ChainIkSolverPos_LMA ikSolver(_robotChain);
         KDL::ChainDynParam dynSolver(_robotChain, gravity);
         KDL::JntArray q(7);                         // [RAD]    current position not limited in range [0-2PI]
         KDL::JntArray qPrev(7);                     // [RAD]    prev positions
@@ -424,7 +426,6 @@ namespace KinovaLiralab
 
             // Send a first frame
             base_feedback = _baseRealTime->Refresh(base_command);
-            
             // Set actuators in torque mode now that the command is equal to measure
             auto control_mode_message = KORTEX::ActuatorConfig::ControlModeInformation();
             control_mode_message.set_control_mode(KORTEX::ActuatorConfig::ControlMode::TORQUE);
@@ -433,11 +434,22 @@ namespace KinovaLiralab
                 actuator_config.SetControlMode(control_mode_message, i);
 
             // Real-time loop
-            while (timer_count < (10 * 1000))
+            bool change = true;
+            while (timer_count < (20 * 1000))
             {
+                if(timer_count > (5 * 1000) && change)
+                {
+                    change = false;
+                    KDL::Frame f;
+                    _fkSolver->JntToCart(q,f);
+                    f.p.data[2] -= 0.05;
+                    ikSolver.CartToJnt(q,f,eq);
+                }
+
                 now = GetTickUs();
                 if (now - last > 1000)
-                {
+                {   
+                    std::cout << "READ: \n";
                     for(int i = 0; i < 7; i++)
                     {
                         // Position command to first actuator is set to measured one to avoid following error to trigger
@@ -448,7 +460,7 @@ namespace KinovaLiralab
 
                         /* --- Current angle in range [0,2PI] --- */
                         double currQ = base_feedback.actuators(i).position() * M_PI / 180.0;
-                        
+                        std::cout << base_feedback.actuators(i).torque() << ",";
                         /* --- Unwrap angles --- */
                         double delta = currQ - qPrev(i);
                         if(delta > M_PI) delta -= 2.0 * M_PI;
@@ -459,16 +471,20 @@ namespace KinovaLiralab
                         q(i) += delta;
                         qVel(i) = base_feedback.actuators(i).velocity() * M_PI / 180.0;
                     }
-
+                    std::cout <<"\n";
                     /* --- Get gravity compensation --- */
                     dynSolver.JntToGravity(q,g);
                     for(int i=0;i<7;i++)
-                        tau(i) = g(i) + Kp(i) * (eq(i) - q(i)) + Kd(i) * (eqVel(i) - qVel(i));
+                        tau(i) = g(i) + 2.0 * Kp(i) * (eq(i) - q(i)) + Kd(i) * (eqVel(i) - qVel(i));
 
                     /* --- Saturate torque --- */
                     double tau_max[7] = {30,30,30,30,20,20,10};
                     for(int i=0;i<7;i++)
+                    {
                         tau(i) = std::clamp(tau(i), -tau_max[i], tau_max[i]);
+                        std::cout << tau(i) << ", ";
+                    }
+                    std::cout << "\n";
 
                     /* --- Set torque command --- */
                     for(int i = 0; i < 7; i++)
@@ -616,6 +632,8 @@ namespace KinovaLiralab
                         q(i) = base_feedback.actuators(i).position() * M_PI / 180.0;
                     }
 
+                    UpdateRobotState(base_feedback,q);
+
                     /* --- Get gravity compensation --- */
                     dynSolver.JntToGravity(q,g);
                     for(int i=0;i<7;i++)
@@ -630,7 +648,7 @@ namespace KinovaLiralab
                     for(int i = 0; i < 7; i++)
                         base_command.mutable_actuators(i)->set_torque_joint(tau(i) * 1.05);
 
-                    std::cout << timer_count/1000.0 << std::endl;
+                    //std::cout << timer_count/1000.0 << std::endl;
 
                     /* --- Increase identifier to reject out-of-date commands --- */
                     base_command.set_frame_id(base_command.frame_id() + 1);
@@ -691,6 +709,55 @@ namespace KinovaLiralab
         // Wait for a bit
         std::this_thread::sleep_for(std::chrono::milliseconds(2000));
 
+    }
+
+    void Robot::UpdateRobotState(const KORTEX::BaseCyclic::Feedback& baseFeedback, const KDL::JntArray& q)
+    {
+        std::vector<float> jointPositions(7);
+        std::vector<float> eePose(12);
+        std::vector<float> jointTorques(7);
+        std::vector<float> jointVels(7);
+        KDL::Frame eePoseFrame;
+
+        
+        for(int i = 0; i < 7; i++)
+        {
+            jointPositions[i] = baseFeedback.actuators(i).position();
+            jointTorques[i] = baseFeedback.actuators(i).torque();
+            jointVels[i] = baseFeedback.actuators(i).velocity();
+        }
+        
+
+        _fkSolver->JntToCart(q,eePoseFrame);
+
+        eePose[0] = (eePoseFrame.p.data[0]);
+        eePose[1] = (eePoseFrame.p.data[1]);
+        eePose[2] = (eePoseFrame.p.data[2]);
+        eePose[3] = (eePoseFrame.M.data[0]);
+        eePose[4] = (eePoseFrame.M.data[1]);
+        eePose[5] = (eePoseFrame.M.data[2]);
+        eePose[6] = (eePoseFrame.M.data[3]);
+        eePose[7] = (eePoseFrame.M.data[4]);
+        eePose[8] = (eePoseFrame.M.data[5]);
+        eePose[9] = (eePoseFrame.M.data[6]);
+        eePose[10] = (eePoseFrame.M.data[7]);
+        eePose[11] = (eePoseFrame.M.data[8]);
+
+
+        _mRobotState.lock();
+
+        _robotState._jointPositions = jointPositions;
+        _robotState._eePose = eePose;
+        _robotState._jointTorques = jointTorques;
+        _robotState._jointVels = jointVels;
+
+        _mRobotState.unlock();
+    }
+    
+    KinovaLiralab::RobotState Robot::GetRobotState()
+    {
+        std::lock_guard<std::mutex> lock(_mRobotState);
+        return _robotState;   // copia sicura
     }
 }
 

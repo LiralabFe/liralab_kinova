@@ -28,8 +28,22 @@ namespace KORTEX = Kinova::Api;
 int main(int argc, char **argv)
 {
     KinovaLiralab::Robot* robot = new KinovaLiralab::Robot();
+    thread realtimeThread([robot]() {robot->WeightlessMode();});
+
+    float timer = 0;
+    while(timer < 10000)
+    {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        timer += 100;
+        KinovaLiralab::RobotState robotState = robot->GetRobotState();
+        std::cout << robotState._eePose.size() << std::endl;
+        std::cout << robotState._eePose[0] << ", " << robotState._eePose[1] << ", " << robotState._eePose[2] << "\n";
+    }
+
+    realtimeThread.join();
     //robot->GoHome();
-    robot->TorqueControlExample();
+    //robot->WeightlessMode();
+
     /*
     auto start = std::chrono::high_resolution_clock::now();
         robot->EvaluateJacobian();

@@ -20,6 +20,7 @@
 #include <kdl/chainfksolverpos_recursive.hpp>
 #include <kdl/chainiksolverpos_lma.hpp>
 #include <kdl/chainiksolvervel_pinv.hpp>
+#include <kdl/chainfksolver.hpp>
 #include <kdl/chaindynparam.hpp>
 #include <kdl/jacobian.hpp>
 #include <kdl/frames.hpp>
@@ -28,7 +29,9 @@
 #include <kdl_parser/kdl_parser.hpp>
 
 #include <math.h>
+#include <chrono>
 #include <thread>
+#include <mutex>
 
 #define PORT 10000
 #define PORT_REALTIME 10001
@@ -36,6 +39,14 @@
 namespace KinovaLiralab
 {
     namespace KORTEX = Kinova::Api;
+
+    struct RobotState
+    {
+        std::vector<float> _jointPositions; // size 7
+        std::vector<float> _eePose;         // size 12
+        std::vector<float> _jointTorques;   // size 7
+        std::vector<float> _jointVels;      // size 7
+    };
 
     class Robot
     {
@@ -81,16 +92,26 @@ namespace KinovaLiralab
         constexpr void Print(std::string_view s) { std::cout << s << std::endl;}
         int64_t GetTickUs();
         void PrintException(KORTEX::KDetailedException& ex);
+        void UpdateRobotState(
+            const KORTEX::BaseCyclic::Feedback& baseFeedback,
+            const KDL::JntArray& q);
         //-------
         // For Jacobian
         urdf::Model _urdfModel;
         KDL::Chain _robotChain;
         KDL::Frame _eeFrame;
         KDL::Tree _kdlTree;
-        KDL::ChainFkSolverPos_recursive* _kdlSolver;
+        KDL::ChainFkSolverPos_recursive* _fkSolver;
+
         //-------
         // Thread
-        
+        std::mutex _mRobotState;
+        KinovaLiralab::RobotState _robotState{
+            std::vector<float>(7, 0.0f),   // _jointPositions
+            std::vector<float>(12, 0.0f),  // _eePose
+            std::vector<float>(7, 0.0f),   // _jointTorques
+            std::vector<float>(7, 0.0f)    // _jointVels
+        };
 
         public:
             Robot();
@@ -103,7 +124,9 @@ namespace KinovaLiralab
             void VelocityControlHighLevel();
             void TorqueControlExample();
             void WeightlessMode();
+            KinovaLiralab::RobotState GetRobotState();
     };
+
 }
 
 
