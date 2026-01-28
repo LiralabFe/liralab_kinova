@@ -8,6 +8,9 @@
 #include <KinovaLiralab.hpp>
 #include <chrono>
 #include <opencv2/core.hpp>
+#include <opencv2/videoio.hpp>
+#include <opencv2/imgproc.hpp>
+#include <opencv2/imgcodecs.hpp>
 #include <opencv2/core/utils/filesystem.hpp>
 #include <filesystem>
 
@@ -22,11 +25,13 @@
 class DatasetRecorder
 {
 private:
-    string _csvName, _recordFolder;
+    string _recordFolder;
     std::filesystem::path _csvFilePath, _imageFilePath;
     KinovaLiralab::Robot* _robot;
-    std::vector<KinovaLiralab::RobotState> _robotStates;
     FILE* _csvFile;
+    cv::VideoCapture _camera;
+    std::vector<KinovaLiralab::RobotState> _robotStates;
+    std::vector<cv::Mat> _frames;
 
 public:
     DatasetRecorder(const std::string folderName, KinovaLiralab::Robot* robot);
@@ -36,15 +41,19 @@ public:
 
 DatasetRecorder::DatasetRecorder(const std::string folderName, KinovaLiralab::Robot* robot) : _recordFolder{folderName}, _robot{robot}
 {
+    // === MAKE DIRS FOR RECORD ===
     if (!cv::utils::fs::createDirectories(folderName)) std::cerr << "Impossibile creare cartella: " << folderName << std::endl;
     if (!cv::utils::fs::createDirectories((std::filesystem::path(folderName) / "image").c_str())) std::cerr << "Impossibile creare cartella: " << _recordFolder << std::endl;
 
+    // 
     _csvFilePath = std::filesystem::path(folderName) / (folderName + ".csv");
     _imageFilePath = std::filesystem::path(folderName) / "image";
-    std::cout << "FILE PATH: " << _csvFilePath.c_str() << std::endl;
-    std::cout << "IMAGE PATH: " << _imageFilePath.c_str() << std::endl;
-    _csvName = _csvFilePath.c_str();
-    _csvFile = fopen(_csvName.c_str(), "w");
+    _csvFile = fopen(_csvFilePath.c_str(), "w");
+
+    int deviceID = 0;   // 0 = webcam default
+    _camera.open(deviceID);
+
+    if (!_camera.isOpened()) std::cerr << "Impossibile aprire la webcam (device " << deviceID << ")\n";
 
     if (!_csvFile) perror("Errore apertura file CSV");
     else
@@ -81,6 +90,17 @@ void DatasetRecorder::StartRecord()
 
     while (!stop)
     {
+        // === FRAME CAMERA ===
+        cv::Mat frame, gray;
+
+        _camera >> frame;   // cattura frame
+
+        if (frame.empty()) continue;
+
+        cv::cvtColor(frame, gray, cv::COLOR_BGR2GRAY);
+        cv::normalize(gray, gray, 0, 255, cv::NORM_MINMAX);
+        _frames.push_back(gray.clone());
+
         KinovaLiralab::RobotState newState = _robot->GetRobotState();
 
         auto now = clock::now();
@@ -95,9 +115,12 @@ void DatasetRecorder::StartRecord()
     std::cout << "Recording fermato. Scrittura CSV...\n";
 
     // === SCRITTURA CSV ===
+    std::cout << "Robot States: " << _robotStates.size() << std::endl;
+    std::cout << "Robot States: " << _frames.size() << std::endl;
+
     for (size_t i = 0; i < _robotStates.size(); ++i)
     {
-        const auto& s = _robotStates[i];
+        const KinovaLiralab::RobotState& s = _robotStates[i];
 
         fprintf(_csvFile,
             "%.6f,"
@@ -118,13 +141,20 @@ void DatasetRecorder::StartRecord()
             s._eePose[3], s._eePose[4], s._eePose[5],
             s._eePose[6], s._eePose[7], s._eePose[8],
             s._eePose[9], s._eePose[10], s._eePose[11],
-            "echo.png"
+            ("img_" + std::to_string(i) + ".png").c_str()
         );
+    }
+
+    for (size_t i = 0; i < _frames.size(); ++i)
+    {
+        std::string name = "img_" + std::to_string(i) + ".png";
+        auto path = _imageFilePath / name;
+        cv::imwrite(path.string(), _frames[i]);
     }
 
     fflush(_csvFile);
 
-    std::cout << "CSV scritto: " << _csvName << "\n";
+    std::cout << "CSV scritto: " << _csvFilePath.c_str() << "\n";
     std::cout << "Samples registrati: " << _robotStates.size() << "\n";
 }
 
