@@ -18,6 +18,7 @@
 #include <TransportClientTcp.h>
 #include <TransportClientUdp.h>
 #include <KinovaLiralab.hpp>
+#include <DatasetRecorder.hpp>
 
 #define PORT 10000
 #define PORT_REALTIME 10001
@@ -28,8 +29,13 @@ namespace KORTEX = Kinova::Api;
 int main(int argc, char **argv)
 {
     KinovaLiralab::Robot* robot = new KinovaLiralab::Robot();
-    thread realtimeThread([robot]() {robot->WeightlessMode();});
+    thread realtimeThread([robot]() {robot->StartHandGuidance();});
+    DatasetRecorder datasetRecorder("test", robot);
+    datasetRecorder.StartRecord();
+    robot->StopHandGuidance();
+    realtimeThread.join();
 
+    /*
     float timer = 0;
     while(timer < 10000)
     {
@@ -39,25 +45,5 @@ int main(int argc, char **argv)
         std::cout << robotState._eePose.size() << std::endl;
         std::cout << robotState._eePose[0] << ", " << robotState._eePose[1] << ", " << robotState._eePose[2] << "\n";
     }
-
-    realtimeThread.join();
-    //robot->GoHome();
-    //robot->WeightlessMode();
-
-    /*
-    auto start = std::chrono::high_resolution_clock::now();
-        robot->EvaluateJacobian();
-    auto end = std::chrono::high_resolution_clock::now();
-    std::cout << "Execution time: " << std::chrono::duration<double>(end-start).count() << std:: endl;
-    start = std::chrono::high_resolution_clock::now();
-        robot->EvaluateJacobianKDL();
-    end = std::chrono::high_resolution_clock::now();
-    std::cout << "Execution time: " << std::chrono::duration<double>(end-start).count() << std:: endl;
-    start = std::chrono::high_resolution_clock::now();
-        robot->EvaluateJacobianKDLNumerically();
-    end = std::chrono::high_resolution_clock::now();
-    std::cout << "Execution time: " << std::chrono::duration<double>(end-start).count() << std:: endl;
     */
-
-    // robot->VelocityControlHighLevel();
 }

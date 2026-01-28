@@ -11,6 +11,8 @@ find_package(kdl_parser REQUIRED)
 find_package(urdf REQUIRED)
 find_package(urdfdom REQUIRED)
 find_package(urdfdom_headers REQUIRED)
+find_package(OpenCV REQUIRED PATHS ~/opencv-4.13.0)
+
 
 # Aggiungi la directory include al progetto (include tutte le sottocartelle)
 include_directories(${PROJECT_SOURCE_DIR}/include)
@@ -19,12 +21,14 @@ include_directories(${PROJECT_SOURCE_DIR}/include)
 add_library(libKortexApiCpp STATIC IMPORTED)
 set_target_properties(libKortexApiCpp PROPERTIES IMPORTED_LOCATION ${PROJECT_SOURCE_DIR}/lib/libKortexApiCpp.a)
 
+
 # Aggiungi l'eseguibile
 add_executable(liralab_kinova src/main.cpp src/KinovaLiralab.cpp)
 
 # Linka l'eseguibile con la libreria statica
 target_link_libraries(liralab_kinova libKortexApiCpp Eigen3::Eigen)
 target_link_libraries(liralab_kinova orocos-kdl urdf::urdf)
+target_link_libraries(liralab_kinova ${OpenCV_LIBS})
 
 add_compile_options(-Wdeprecated-declarations)
 
@@ -35,7 +39,8 @@ ament_package()
 # Assicurati che l'eseguibile abbia accesso a include/
 target_include_directories(liralab_kinova
   PRIVATE
-    ${PROJECT_SOURCE_DIR}/include  # Aggiungi la cartella include, che include tutte le sottocartelle
+    ${PROJECT_SOURCE_DIR}/include
+    ${OpenCV_INCLUDE_DIRS}
     ${PROJECT_SOURCE_DIR}/include/client
     ${PROJECT_SOURCE_DIR}/include/client_stubs
     ${PROJECT_SOURCE_DIR}/include/common

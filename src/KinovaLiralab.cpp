@@ -552,7 +552,7 @@ namespace KinovaLiralab
         std::this_thread::sleep_for(std::chrono::milliseconds(2000));
     }
 
-    void Robot::WeightlessMode()
+    void Robot::StartHandGuidance()
     {
         unsigned int actuator_count = _base->GetActuatorCount().count();
         
@@ -610,6 +610,7 @@ namespace KinovaLiralab
             base_feedback = _baseRealTime->Refresh(base_command);
             
             // Set actuators in torque mode now that the command is equal to measure
+            std::cout << "[TORQUE CONTROL]" << std::endl;
             auto control_mode_message = KORTEX::ActuatorConfig::ControlModeInformation();
             control_mode_message.set_control_mode(KORTEX::ActuatorConfig::ControlMode::TORQUE);
             
@@ -617,7 +618,7 @@ namespace KinovaLiralab
                 actuator_config.SetControlMode(control_mode_message, i);
 
             // Real-time loop
-            while (timer_count < (10.5 * 1000))
+            while (!_stopApp) // timer_count < (10.5 * 1000)
             {
                 now = GetTickUs();
                 if (now - last > 1000)
@@ -678,19 +679,17 @@ namespace KinovaLiralab
                         std::cout << "Unknown error." << std::endl;
                     }
                     
-                    timer_count++;
+                    //timer_count++;
                     last = GetTickUs();
                 }
             }
-
-            std::cout << "Torque control example completed" << std::endl;
 
             control_mode_message.set_control_mode(KORTEX::ActuatorConfig::ControlMode::POSITION);
 
             for(int i = 1; i < 8; i++)
                 actuator_config.SetControlMode(control_mode_message, i);
 
-            std::cout << "Torque control example clean exit" << std::endl;
+            std::cout << "[POSITION CONTROL]" << std::endl;
 
         }
         catch (KORTEX::KDetailedException& ex)
@@ -709,6 +708,11 @@ namespace KinovaLiralab
         // Wait for a bit
         std::this_thread::sleep_for(std::chrono::milliseconds(2000));
 
+    }
+
+    void Robot::StopHandGuidance()
+    {
+         _stopApp = true; 
     }
 
     void Robot::UpdateRobotState(const KORTEX::BaseCyclic::Feedback& baseFeedback, const KDL::JntArray& q)

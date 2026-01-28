@@ -28,6 +28,8 @@
 #include <urdf/model.h>
 #include <kdl_parser/kdl_parser.hpp>
 
+#include <RobotState.hpp>
+
 #include <math.h>
 #include <chrono>
 #include <thread>
@@ -39,14 +41,6 @@
 namespace KinovaLiralab
 {
     namespace KORTEX = Kinova::Api;
-
-    struct RobotState
-    {
-        std::vector<float> _jointPositions; // size 7
-        std::vector<float> _eePose;         // size 12
-        std::vector<float> _jointTorques;   // size 7
-        std::vector<float> _jointVels;      // size 7
-    };
 
     class Robot
     {
@@ -106,6 +100,8 @@ namespace KinovaLiralab
         //-------
         // Thread
         std::mutex _mRobotState;
+        std::atomic<bool> _stopApp{false};
+
         KinovaLiralab::RobotState _robotState{
             std::vector<float>(7, 0.0f),   // _jointPositions
             std::vector<float>(12, 0.0f),  // _eePose
@@ -123,7 +119,8 @@ namespace KinovaLiralab
             void VelocityControl();
             void VelocityControlHighLevel();
             void TorqueControlExample();
-            void WeightlessMode();
+            void StartHandGuidance();
+            void StopHandGuidance();
             KinovaLiralab::RobotState GetRobotState();
     };
 
