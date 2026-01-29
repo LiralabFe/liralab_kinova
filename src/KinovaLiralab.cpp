@@ -552,167 +552,174 @@ namespace KinovaLiralab
         std::this_thread::sleep_for(std::chrono::milliseconds(2000));
     }
 
+    /* ------------- */
+    /* HAND GUIDANCE */
+    /* ------------- */
     void Robot::StartHandGuidance()
     {
-        unsigned int actuator_count = _base->GetActuatorCount().count();
-        
-        KORTEX::BaseCyclic::Feedback base_feedback;
-        KORTEX::BaseCyclic::Command  base_command;
-        auto actuator_config = KORTEX::ActuatorConfig::ActuatorConfigClient(_router);
+        if(_realtimeThread.joinable()) return;  // Another thread is already running
 
-        auto servoing_mode = KORTEX::Base::ServoingModeInformation();
+        _realtimeThread = thread([this]() {
+            unsigned int actuator_count = _base->GetActuatorCount().count();
+            
+            KORTEX::BaseCyclic::Feedback base_feedback;
+            KORTEX::BaseCyclic::Command  base_command;
+            auto actuator_config = KORTEX::ActuatorConfig::ActuatorConfigClient(_router);
 
-        int timer_count = 0;
-        int64_t now = 0;
-        int64_t last = 0;
+            auto servoing_mode = KORTEX::Base::ServoingModeInformation();
 
-        KDL::Vector gravity(0.0,0.0,-9.81);
-        KDL::ChainDynParam dynSolver(_robotChain, gravity);
-        KDL::JntArray tau(7),g(7),q(7);
+            int timer_count = 0;
+            int64_t now = 0;
+            int64_t last = 0;
+
+            KDL::Vector gravity(0.0,0.0,-9.81);
+            KDL::ChainDynParam dynSolver(_robotChain, gravity);
+            KDL::JntArray tau(7),g(7),q(7);
 
 
-        /*
-        auto torque_offset_message = KORTEX::ActuatorConfig::TorqueOffset();
-        torque_offset_message.set_torque_offset(0.0);
-        auto torque_offset_message = KORTEX::ActuatorConfig::TorqueOffset();
-        torque_offset_message.set_torque_offset(0.0);
-        for(int i = 1; i <= 7; i++)
-        {
-            actuator_config.SetTorqueOffset(torque_offset_message, i);
-        }
-        usleep(1500000); // 1.5 second
-
-        for(int i = 1; i <= 7; i++)
-        {
-            std::cout << i << std::endl;
-            auto torque_offset = actuator_config.GetTorqueOffset(i);
-            std::cout << "TorqueOffset: " << torque_offset.torque_offset() << std::endl;
-        }
-        return;
-        */
-
-        try
-        {
-            // Set the base in low-level servoing mode
-            servoing_mode.set_servoing_mode(KORTEX::Base::ServoingMode::LOW_LEVEL_SERVOING);
-            _base->SetServoingMode(servoing_mode);
-            base_feedback = _baseRealTime->RefreshFeedback();
-
-            // Initialize each actuator to their current position
-            for (unsigned int i = 0; i < actuator_count; i++)
+            /*
+            auto torque_offset_message = KORTEX::ActuatorConfig::TorqueOffset();
+            torque_offset_message.set_torque_offset(0.0);
+            auto torque_offset_message = KORTEX::ActuatorConfig::TorqueOffset();
+            torque_offset_message.set_torque_offset(0.0);
+            for(int i = 1; i <= 7; i++)
             {
-                // Save the current actuator position, to avoid a following error
-                base_command.add_actuators()->set_position(base_feedback.actuators(i).position());
-                q(i)        = base_feedback.actuators(i).position() * M_PI / 180.0;
+                actuator_config.SetTorqueOffset(torque_offset_message, i);
             }
+            usleep(1500000); // 1.5 second
 
-            // Send a first frame
-            base_feedback = _baseRealTime->Refresh(base_command);
-            
-            // Set actuators in torque mode now that the command is equal to measure
-            std::cout << "[TORQUE CONTROL]" << std::endl;
-            auto control_mode_message = KORTEX::ActuatorConfig::ControlModeInformation();
-            control_mode_message.set_control_mode(KORTEX::ActuatorConfig::ControlMode::TORQUE);
-            
-            for(int i = 1; i < 8; i++)  // NOTE!!! Joint Device IDs are from [1-8]
-                actuator_config.SetControlMode(control_mode_message, i);
-
-            // Real-time loop
-            while (!_stopApp) // timer_count < (10.5 * 1000)
+            for(int i = 1; i <= 7; i++)
             {
-                now = GetTickUs();
-                if (now - last > 1000)
+                std::cout << i << std::endl;
+                auto torque_offset = actuator_config.GetTorqueOffset(i);
+                std::cout << "TorqueOffset: " << torque_offset.torque_offset() << std::endl;
+            }
+            return;
+            */
+
+            try
+            {
+                // Set the base in low-level servoing mode
+                servoing_mode.set_servoing_mode(KORTEX::Base::ServoingMode::LOW_LEVEL_SERVOING);
+                _base->SetServoingMode(servoing_mode);
+                base_feedback = _baseRealTime->RefreshFeedback();
+
+                // Initialize each actuator to their current position
+                for (unsigned int i = 0; i < actuator_count; i++)
                 {
-                    for(int i = 0; i < 7; i++)
-                    {
-                        // Position command to first actuator is set to measured one to avoid following error to trigger
-                        // Bonus: When doing this instead of disabling the following error, if communication is lost and first
-                        //        actuator continues to move under torque command, resulting position error with command will
-                        //        trigger a following error and switch back the actuator in position command to hold its position
-                        base_command.mutable_actuators(i)->set_position(base_feedback.actuators(i).position());
-                        q(i) = base_feedback.actuators(i).position() * M_PI / 180.0;
-                    }
-
-                    UpdateRobotState(base_feedback,q);
-
-                    /* --- Get gravity compensation --- */
-                    dynSolver.JntToGravity(q,g);
-                    for(int i=0;i<7;i++)
-                        tau(i) = g(i);
-
-                    /* --- Saturate torque --- */
-                    double tau_max[7] = {30,30,30,30,20,20,10};
-                    for(int i=0;i<7;i++)
-                        tau(i) = std::clamp(tau(i), -tau_max[i], tau_max[i]);
-
-                    /* --- Set torque command --- */
-                    for(int i = 0; i < 7; i++)
-                        base_command.mutable_actuators(i)->set_torque_joint(tau(i) * 1.05);
-
-                    //std::cout << timer_count/1000.0 << std::endl;
-
-                    /* --- Increase identifier to reject out-of-date commands --- */
-                    base_command.set_frame_id(base_command.frame_id() + 1);
-                    if (base_command.frame_id() > 65535)
-                        base_command.set_frame_id(0);
-
-                    for (int idx = 0; idx < actuator_count; idx++)
-                        base_command.mutable_actuators(idx)->set_command_id(base_command.frame_id());
-
-                    /* --- SEND TORQUE COMMAND --- */
-                    try
-                    {
-                        base_feedback = _baseRealTime->Refresh(base_command, 0);
-                    }
-                    catch (KORTEX::KDetailedException& ex)
-                    {
-                        std::cout << "Kortex exception: " << ex.what() << std::endl;
-
-                        std::cout << "Error sub-code: " << KORTEX::SubErrorCodes_Name(KORTEX::SubErrorCodes((ex.getErrorInfo().getError().error_sub_code()))) << std::endl;
-                    }
-                    catch (std::runtime_error& ex2)
-                    {
-                        std::cout << "runtime error: " << ex2.what() << std::endl;
-                    }
-                    catch(...)
-                    {
-                        std::cout << "Unknown error." << std::endl;
-                    }
-                    
-                    //timer_count++;
-                    last = GetTickUs();
+                    // Save the current actuator position, to avoid a following error
+                    base_command.add_actuators()->set_position(base_feedback.actuators(i).position());
+                    q(i)        = base_feedback.actuators(i).position() * M_PI / 180.0;
                 }
+
+                // Send a first frame
+                base_feedback = _baseRealTime->Refresh(base_command);
+                
+                // Set actuators in torque mode now that the command is equal to measure
+                std::cout << "[TORQUE CONTROL]" << std::endl;
+                auto control_mode_message = KORTEX::ActuatorConfig::ControlModeInformation();
+                control_mode_message.set_control_mode(KORTEX::ActuatorConfig::ControlMode::TORQUE);
+                
+                for(int i = 1; i < 8; i++)  // NOTE!!! Joint Device IDs are from [1-8]
+                    actuator_config.SetControlMode(control_mode_message, i);
+
+                // Real-time loop
+                while (!_stopApp) // timer_count < (10.5 * 1000)
+                {
+                    now = GetTickUs();
+                    if (now - last > 1000)
+                    {
+                        for(int i = 0; i < 7; i++)
+                        {
+                            // Position command to first actuator is set to measured one to avoid following error to trigger
+                            // Bonus: When doing this instead of disabling the following error, if communication is lost and first
+                            //        actuator continues to move under torque command, resulting position error with command will
+                            //        trigger a following error and switch back the actuator in position command to hold its position
+                            base_command.mutable_actuators(i)->set_position(base_feedback.actuators(i).position());
+                            q(i) = base_feedback.actuators(i).position() * M_PI / 180.0;
+                        }
+
+                        UpdateRobotState(base_feedback,q);
+
+                        /* --- Get gravity compensation --- */
+                        dynSolver.JntToGravity(q,g);
+                        for(int i=0;i<7;i++)
+                            tau(i) = g(i);
+
+                        /* --- Saturate torque --- */
+                        double tau_max[7] = {30,30,30,30,20,20,10};
+                        for(int i=0;i<7;i++)
+                            tau(i) = std::clamp(tau(i), -tau_max[i], tau_max[i]);
+
+                        /* --- Set torque command --- */
+                        for(int i = 0; i < 7; i++)
+                            base_command.mutable_actuators(i)->set_torque_joint(tau(i) * 1.05);
+
+                        //std::cout << timer_count/1000.0 << std::endl;
+
+                        /* --- Increase identifier to reject out-of-date commands --- */
+                        base_command.set_frame_id(base_command.frame_id() + 1);
+                        if (base_command.frame_id() > 65535)
+                            base_command.set_frame_id(0);
+
+                        for (int idx = 0; idx < actuator_count; idx++)
+                            base_command.mutable_actuators(idx)->set_command_id(base_command.frame_id());
+
+                        /* --- SEND TORQUE COMMAND --- */
+                        try
+                        {
+                            base_feedback = _baseRealTime->Refresh(base_command, 0);
+                        }
+                        catch (KORTEX::KDetailedException& ex)
+                        {
+                            std::cout << "Kortex exception: " << ex.what() << std::endl;
+
+                            std::cout << "Error sub-code: " << KORTEX::SubErrorCodes_Name(KORTEX::SubErrorCodes((ex.getErrorInfo().getError().error_sub_code()))) << std::endl;
+                        }
+                        catch (std::runtime_error& ex2)
+                        {
+                            std::cout << "runtime error: " << ex2.what() << std::endl;
+                        }
+                        catch(...)
+                        {
+                            std::cout << "Unknown error." << std::endl;
+                        }
+                        
+                        //timer_count++;
+                        last = GetTickUs();
+                    }
+                }
+
+                control_mode_message.set_control_mode(KORTEX::ActuatorConfig::ControlMode::POSITION);
+
+                for(int i = 1; i < 8; i++)
+                    actuator_config.SetControlMode(control_mode_message, i);
+
+                std::cout << "[POSITION CONTROL]" << std::endl;
+
             }
+            catch (KORTEX::KDetailedException& ex)
+            {
+                std::cout << "API error: " << ex.what() << std::endl;
+            }
+            catch (std::runtime_error& ex2)
+            {
+                std::cout << "Error: " << ex2.what() << std::endl;
+            }
+            
+            // Set the servoing mode back to Single Level
+            servoing_mode.set_servoing_mode(KORTEX::Base::ServoingMode::SINGLE_LEVEL_SERVOING);
+            _base->SetServoingMode(servoing_mode);
 
-            control_mode_message.set_control_mode(KORTEX::ActuatorConfig::ControlMode::POSITION);
-
-            for(int i = 1; i < 8; i++)
-                actuator_config.SetControlMode(control_mode_message, i);
-
-            std::cout << "[POSITION CONTROL]" << std::endl;
-
-        }
-        catch (KORTEX::KDetailedException& ex)
-        {
-            std::cout << "API error: " << ex.what() << std::endl;
-        }
-        catch (std::runtime_error& ex2)
-        {
-            std::cout << "Error: " << ex2.what() << std::endl;
-        }
-        
-        // Set the servoing mode back to Single Level
-        servoing_mode.set_servoing_mode(KORTEX::Base::ServoingMode::SINGLE_LEVEL_SERVOING);
-        _base->SetServoingMode(servoing_mode);
-
-        // Wait for a bit
-        std::this_thread::sleep_for(std::chrono::milliseconds(2000));
-
+            // Wait for a bit
+            std::this_thread::sleep_for(std::chrono::milliseconds(2000));
+        });
     }
 
     void Robot::StopHandGuidance()
     {
-         _stopApp = true; 
+         _stopApp = true;
+         _realtimeThread.join();
     }
 
     void Robot::UpdateRobotState(const KORTEX::BaseCyclic::Feedback& baseFeedback, const KDL::JntArray& q)

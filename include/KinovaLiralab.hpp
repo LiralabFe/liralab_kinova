@@ -99,6 +99,7 @@ namespace KinovaLiralab
 
         //-------
         // Thread
+        thread _realtimeThread;
         std::mutex _mRobotState;
         std::atomic<bool> _stopApp{false};
 

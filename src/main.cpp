@@ -19,6 +19,7 @@
 #include <TransportClientUdp.h>
 #include <KinovaLiralab.hpp>
 #include <DatasetRecorder.hpp>
+#include <TerminationHandler.hpp>
 
 #define PORT 10000
 #define PORT_REALTIME 10001
@@ -27,23 +28,19 @@ namespace KORTEX = Kinova::Api;
 
 
 int main(int argc, char **argv)
-{
+{    
+    TerminationHandler t;
     KinovaLiralab::Robot* robot = new KinovaLiralab::Robot();
-    thread realtimeThread([robot]() {robot->StartHandGuidance();});
     DatasetRecorder datasetRecorder("test", robot);
-    datasetRecorder.StartRecord();
-    robot->StopHandGuidance();
-    realtimeThread.join();
 
-    /*
-    float timer = 0;
-    while(timer < 10000)
-    {
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        timer += 100;
-        KinovaLiralab::RobotState robotState = robot->GetRobotState();
-        std::cout << robotState._eePose.size() << std::endl;
-        std::cout << robotState._eePose[0] << ", " << robotState._eePose[1] << ", " << robotState._eePose[2] << "\n";
-    }
-    */
+    // Subscribe callbacks for CTRL-C signal
+    TerminationHandler::RegisterCallback([&robot](){robot->StopHandGuidance();});
+    TerminationHandler::RegisterCallback([&datasetRecorder](){datasetRecorder.StopRecord();});
+
+    robot->StartHandGuidance();
+    datasetRecorder.StartRecord();
+    std::cin.get();
+    datasetRecorder.StopRecord();
+    robot->StopHandGuidance();
+
 }
