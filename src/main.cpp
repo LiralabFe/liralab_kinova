@@ -34,13 +34,22 @@ int main(int argc, char **argv)
     DatasetRecorder datasetRecorder("test", robot);
 
     // Subscribe callbacks for CTRL-C signal
-    TerminationHandler::RegisterCallback([&robot](){robot->StopHandGuidance();});
+    TerminationHandler::RegisterCallback([&robot](){robot->StopApp();});
     TerminationHandler::RegisterCallback([&datasetRecorder](){datasetRecorder.StopRecord();});
 
-    robot->StartHandGuidance();
-    datasetRecorder.StartRecord();
+    robot->TorqueControl();
+    //datasetRecorder.StartRecord();
     std::cin.get();
-    datasetRecorder.StopRecord();
-    robot->StopHandGuidance();
+    // -------------------
+    
+    KDL::Frame eeFrame = robot->GetEEFrame();
+    eeFrame.p[2] -= 0.03;
+    eeFrame.p[1] -= 0.03;
+    robot->SetEquilibriumPose(eeFrame);
+
+    // -------------------
+    std::cin.get();
+    //datasetRecorder.StopRecord();
+    robot->StopApp();
 
 }

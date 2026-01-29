@@ -96,19 +96,22 @@ namespace KinovaLiralab
         KDL::Frame _eeFrame;
         KDL::Tree _kdlTree;
         KDL::ChainFkSolverPos_recursive* _fkSolver;
+        KDL::ChainIkSolverPos_LMA* _ikSolver;
 
         //-------
         // Thread
         thread _realtimeThread;
-        std::mutex _mRobotState;
         std::atomic<bool> _stopApp{false};
-
+        std::mutex _mRobotState;
+        std::mutex _meeEquilibriumPose;
+        KDL::JntArray _equilibriumJointPosition;
         KinovaLiralab::RobotState _robotState{
             std::vector<float>(7, 0.0f),   // _jointPositions
             std::vector<float>(12, 0.0f),  // _eePose
             std::vector<float>(7, 0.0f),   // _jointTorques
             std::vector<float>(7, 0.0f)    // _jointVels
         };
+
 
         public:
             Robot();
@@ -120,9 +123,12 @@ namespace KinovaLiralab
             void VelocityControl();
             void VelocityControlHighLevel();
             void TorqueControlExample();
+            void TorqueControl();
+            void SetEquilibriumPose(KDL::Frame ee);
             void StartHandGuidance();
-            void StopHandGuidance();
+            void StopApp();
             KinovaLiralab::RobotState GetRobotState();
+            KDL::Frame GetEEFrame();
     };
 
 }

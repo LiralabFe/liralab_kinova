@@ -38,6 +38,8 @@ namespace KinovaLiralab
         else Print("[URDF Loaded]\n");
         _kdlTree.getChain("base_link","end_effector_link",_robotChain);
         _fkSolver = new KDL::ChainFkSolverPos_recursive(_robotChain);
+        _ikSolver = new KDL::ChainIkSolverPos_LMA(_robotChain);
+        _equilibriumJointPosition = KDL::JntArray(7);
 
         KDL::JntArray kdlJoints(_robotChain.getNrOfJoints());
         KORTEX::Base::JointAngles angles = _base->GetMeasuredJointAngles();
@@ -376,6 +378,10 @@ namespace KinovaLiralab
         _base->Stop();
     }
 
+    /* -------------- */
+    /* TORQUE CONTROL */
+    /* -------------- */
+    
     void Robot::TorqueControlExample()
     {
         unsigned int actuator_count = _base->GetActuatorCount().count();
@@ -552,6 +558,204 @@ namespace KinovaLiralab
         std::this_thread::sleep_for(std::chrono::milliseconds(2000));
     }
 
+    void Robot::TorqueControl()
+    {
+        if(_realtimeThread.joinable()) return;  // Another thread is already running
+        
+        _realtimeThread = thread([this](){
+            unsigned int actuator_count = _base->GetActuatorCount().count();
+            
+            KORTEX::BaseCyclic::Feedback base_feedback;
+            KORTEX::BaseCyclic::Command  base_command;
+            auto actuator_config = KORTEX::ActuatorConfig::ActuatorConfigClient(_router);
+
+            std::vector<float> commands;
+
+            auto servoing_mode = KORTEX::Base::ServoingModeInformation();
+
+            int timer_count = 0;
+            int64_t now = 0;
+            int64_t last = 0;
+
+            KDL::Vector gravity(0.0,0.0,-9.81);
+            KDL::ChainIkSolverPos_LMA ikSolver(_robotChain);
+            KDL::ChainDynParam dynSolver(_robotChain, gravity);
+            KDL::JntArray q(7);                         // [RAD]    current position not limited in range [0-2PI]
+            KDL::JntArray qPrev(7);                     // [RAD]    prev positions
+            KDL::JntArray qVel(7);                      // [RAD/s]  current velocity
+            KDL::JntArray eq(7);                        // [RAD]    equilibrium positions
+            KDL::JntArray eqVel(7);                     // [RAD/s]  equilibrium velocity
+            KDL::JntArray tau(7),g(7);
+            Eigen::VectorXd Kp(7), Kd(7);
+            Kp << 60, 50, 40, 30, 25, 10, 5;
+            Kd << 10,  5,  5,  3,  2,  1,  0.5;
+            try
+            {
+                // Set the base in low-level servoing mode
+                servoing_mode.set_servoing_mode(KORTEX::Base::ServoingMode::LOW_LEVEL_SERVOING);
+                _base->SetServoingMode(servoing_mode);
+                base_feedback = _baseRealTime->RefreshFeedback();
+
+                // Initialize each actuator to their current position
+                _meeEquilibriumPose.lock();
+                for (unsigned int i = 0; i < actuator_count; i++)
+                {
+                    commands.push_back(base_feedback.actuators(i).position());
+
+                    // Save the current actuator position, to avoid a following error
+                    base_command.add_actuators()->set_position(base_feedback.actuators(i).position());
+                    q(i)                        = base_feedback.actuators(i).position() * M_PI / 180.0;
+                    qPrev(i)                    = base_feedback.actuators(i).position() * M_PI / 180.0;
+                    _equilibriumJointPosition(i)       = base_feedback.actuators(i).position() * M_PI / 180.0;
+                    eqVel(i)    = 0;
+                    eq(i) = _equilibriumJointPosition(i);
+                }
+                _meeEquilibriumPose.unlock();
+
+                // Send a first frame
+                base_feedback = _baseRealTime->Refresh(base_command);
+                // Set actuators in torque mode now that the command is equal to measure
+                auto control_mode_message = KORTEX::ActuatorConfig::ControlModeInformation();
+                control_mode_message.set_control_mode(KORTEX::ActuatorConfig::ControlMode::TORQUE);
+                
+                for(int i = 1; i < 8; i++)  // NOTE!!! Joint Device IDs are from [1-8]
+                    actuator_config.SetControlMode(control_mode_message, i);
+
+                // Real-time loop
+                bool change = true;
+                while (!_stopApp)
+                {
+                    now = GetTickUs();
+                    if(now - last < 100) continue;
+ 
+                    for(int i = 0; i < 7; i++)
+                    {
+                        // Position command to first actuator is set to measured one to avoid following error to trigger
+                        // Bonus: When doing this instead of disabling the following error, if communication is lost and first
+                        //        actuator continues to move under torque command, resulting position error with command will
+                        //        trigger a following error and switch back the actuator in position command to hold its position
+                        base_command.mutable_actuators(i)->set_position(base_feedback.actuators(i).position());
+
+                        /* --- Current angle in range [0,2PI] --- */
+                        double currQ = base_feedback.actuators(i).position() * M_PI / 180.0;
+
+                        /* --- Unwrap angles --- */
+                        double delta = currQ - qPrev(i);
+                        if(delta > M_PI) delta -= 2.0 * M_PI;
+                        else if (delta < -M_PI) delta += 2.0 * M_PI;
+
+                        /* --- Update angles with unwrapped angles --- */
+                        qPrev(i) = currQ;
+                        q(i) += delta;
+                        qVel(i) = base_feedback.actuators(i).velocity() * M_PI / 180.0;
+                    }
+                    _meeEquilibriumPose.lock();
+                    for(int i = 0; i < 7; i++)
+                        eq(i) = _equilibriumJointPosition(i);
+                    _meeEquilibriumPose.unlock();
+
+                    UpdateRobotState(base_feedback,q);
+
+                    /* --- Get gravity compensation --- */
+                    dynSolver.JntToGravity(q,g);
+                    for(int i=0;i<7;i++)
+                        tau(i) = g(i) + 2.0 * Kp(i) * (eq(i) - q(i)) + Kd(i) * (eqVel(i) - qVel(i));
+
+                    /* --- Saturate torque --- */
+                    double tau_max[7] = {30,30,30,30,20,20,10};
+                    for(int i=0;i<7;i++)
+                        tau(i) = std::clamp(tau(i), -tau_max[i], tau_max[i]);
+
+                    /* --- Set torque command --- */
+                    for(int i = 0; i < 7; i++)
+                        base_command.mutable_actuators(i)->set_torque_joint(tau(i) * 1.05);
+
+                    /* --- Increase identifier to reject out-of-date commands --- */
+                    base_command.set_frame_id(base_command.frame_id() + 1);
+                    if (base_command.frame_id() > 65535)
+                        base_command.set_frame_id(0);
+
+                    for (int idx = 0; idx < actuator_count; idx++)
+                        base_command.mutable_actuators(idx)->set_command_id(base_command.frame_id());
+
+                    /* --- SEND TORQUE COMMAND --- */
+                    try
+                    {
+                        base_feedback = _baseRealTime->Refresh(base_command, 0);
+                    }
+                    catch (KORTEX::KDetailedException& ex)
+                    {
+                        std::cout << "Kortex exception: " << ex.what() << std::endl;
+
+                        std::cout << "Error sub-code: " << KORTEX::SubErrorCodes_Name(KORTEX::SubErrorCodes((ex.getErrorInfo().getError().error_sub_code()))) << std::endl;
+                    }
+                    catch (std::runtime_error& ex2)
+                    {
+                        std::cout << "runtime error: " << ex2.what() << std::endl;
+                    }
+                    catch(...)
+                    {
+                        std::cout << "Unknown error." << std::endl;
+                    }
+                    
+                    timer_count++;
+                    last = GetTickUs();
+                }
+
+                std::cout << "Torque control example completed" << std::endl;
+
+                control_mode_message.set_control_mode(KORTEX::ActuatorConfig::ControlMode::POSITION);
+
+                for(int i = 1; i < 8; i++)
+                    actuator_config.SetControlMode(control_mode_message, i);
+
+                std::cout << "Torque control example clean exit" << std::endl;
+
+            }
+            catch (KORTEX::KDetailedException& ex)
+            {
+                std::cout << "API error: " << ex.what() << std::endl;
+            }
+            catch (std::runtime_error& ex2)
+            {
+                std::cout << "Error: " << ex2.what() << std::endl;
+            }
+            
+            // Set the servoing mode back to Single Level
+            servoing_mode.set_servoing_mode(KORTEX::Base::ServoingMode::SINGLE_LEVEL_SERVOING);
+            _base->SetServoingMode(servoing_mode);
+
+            // Wait for a bit
+            std::this_thread::sleep_for(std::chrono::milliseconds(2000));
+
+            });    
+    }
+
+    void Robot::SetEquilibriumPose(KDL::Frame ee)
+    {
+        KinovaLiralab::RobotState currentState = GetRobotState();
+
+        KDL::JntArray qCurr(7);
+        KDL::JntArray eqNew(7);
+
+        for(int i = 0; i < 7; i++)
+            qCurr(i) = currentState._jointPositions[i];
+
+        _ikSolver->CartToJnt(qCurr,ee,eqNew);
+
+        for(int i = 0; i < 7; i++)
+            std::cout << qCurr(i) << ", ";
+        std::cout << "\n";
+        for(int i = 0; i < 7; i++)
+            std::cout << eqNew(i) << ", ";
+        std::cout << "\n";
+        
+        _meeEquilibriumPose.lock();
+            for(int i = 0; i < 7; i++)
+                _equilibriumJointPosition(i) = eqNew(i);
+        _meeEquilibriumPose.unlock();
+    }
+
     /* ------------- */
     /* HAND GUIDANCE */
     /* ------------- */
@@ -716,7 +920,7 @@ namespace KinovaLiralab
         });
     }
 
-    void Robot::StopHandGuidance()
+    void Robot::StopApp()
     {
          _stopApp = true;
          _realtimeThread.join();
@@ -733,7 +937,7 @@ namespace KinovaLiralab
         
         for(int i = 0; i < 7; i++)
         {
-            jointPositions[i] = baseFeedback.actuators(i).position();
+            jointPositions[i] = baseFeedback.actuators(i).position() * M_PI / 180.0;
             jointTorques[i] = baseFeedback.actuators(i).torque();
             jointVels[i] = baseFeedback.actuators(i).velocity();
         }
@@ -765,10 +969,26 @@ namespace KinovaLiralab
         _mRobotState.unlock();
     }
     
+    /* ------- */
+    /* GETTERs */
+    /* ------- */
     KinovaLiralab::RobotState Robot::GetRobotState()
     {
         std::lock_guard<std::mutex> lock(_mRobotState);
         return _robotState;   // copia sicura
+    }
+
+    KDL::Frame Robot::GetEEFrame()
+    {
+        RobotState s = GetRobotState();
+
+        KDL::Vector eeP(s._eePose[0],s._eePose[1],s._eePose[2]);
+        KDL::Rotation eeR(
+            s._eePose[3],s._eePose[4],s._eePose[5],
+            s._eePose[6],s._eePose[7],s._eePose[8],
+            s._eePose[9],s._eePose[10],s._eePose[11]
+        );
+        return KDL::Frame(eeR,eeP);
     }
 }
 
