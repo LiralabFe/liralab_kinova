@@ -127,8 +127,8 @@ namespace KinovaLiralab
             void SetEquilibriumPose(KDL::Frame ee);
             void StartHandGuidance();
             void StopApp();
-            KinovaLiralab::RobotState GetRobotState();
-            KDL::Frame GetEEFrame();
+            auto GetRobotState()    -> KinovaLiralab::RobotState;
+            auto GetEEFrame()       -> KDL::Frame;
     };
 
 }
