@@ -4,7 +4,7 @@ namespace KinovaLiralab
 {
     namespace KORTEX = Kinova::Api;
     
-    Robot::Robot()
+    Robot::Robot(std::string urdf_file)
     {
         std::cout << "Connecting to robot..." << std::endl;
 
@@ -33,22 +33,22 @@ namespace KinovaLiralab
         _baseRealTime = new KORTEX::BaseCyclic::BaseCyclicClient(_routerRealTime);
 
         // setup kdl
-        _urdfModel.initFile("/home/legion/ROS/kinova_ws/src/ros2_kortex/kortex_description/robots/gen3.urdf");
+        _urdfModel.initFile(urdf_file);
         if(!kdl_parser::treeFromUrdfModel(_urdfModel, _kdlTree)) Print("[Error while parsing urdf]\n"); 
         else Print("[URDF Loaded]\n");
         _kdlTree.getChain("base_link","end_effector_link",_robotChain);
         _fkSolver = new KDL::ChainFkSolverPos_recursive(_robotChain);
         _ikSolver = new KDL::ChainIkSolverPos_LMA(_robotChain);
         _equilibriumJointPosition = KDL::JntArray(7);
+        _equilibriumEEPosition = KDL::Frame();
 
         KDL::JntArray kdlJoints(_robotChain.getNrOfJoints());
         KORTEX::Base::JointAngles angles = _base->GetMeasuredJointAngles();
         for(int i = 0; i < 7; i++)
             kdlJoints(i) = angles.joint_angles(i).value() * M_PI / 180.0f;
 
-        KDL::Frame eeFrame;
-        _fkSolver->JntToCart(kdlJoints,eeFrame);
-        std::cout << eeFrame.p.x() << " , " << eeFrame.p.y() << " , " << eeFrame.p.z() << std::endl;
+        _fkSolver->JntToCart(kdlJoints,_equilibriumEEPosition);
+        std::cout << _equilibriumEEPosition.p.x() << " , " << _equilibriumEEPosition.p.y() << " , " << _equilibriumEEPosition.p.z() << std::endl;
         // ---
         KORTEX::Base::Pose pose = _base->GetMeasuredCartesianPose();
         std::cout << pose.x() << " , " << pose.y() << " , " << pose.z() << std::endl;
@@ -733,26 +733,43 @@ namespace KinovaLiralab
 
     void Robot::SetEquilibriumPose(KDL::Frame ee)
     {
+        /*
+        X min max [0.18     0.54]
+        Y min max [-0.3     0.22]
+        Z min max [0.17     0.63]
+        */
+
         KinovaLiralab::RobotState currentState = GetRobotState();
 
         KDL::JntArray qCurr(7);
         KDL::JntArray eqNew(7);
+
+        // Bounding Box -----
+        if(ee.p[0] < 0.18 || ee.p[0] > 0.54) std::cout << "Clamping " << ee.p[0] << " (X coord).\n";
+        if(ee.p[1] < -0.3 || ee.p[1] > 0.22) std::cout << "Clamping " << ee.p[1] << " (Y coord).\n";
+        if(ee.p[2] < 0.17 || ee.p[2] > 0.63) std::cout << "Clamping " << ee.p[2] << " (Z coord).\n";
+        ee.p[0] = std::clamp(ee.p[0], 0.18, 0.54);
+        ee.p[1] = std::clamp(ee.p[1], -0.3, 0.22);
+        ee.p[2] = std::clamp(ee.p[2], 0.17, 0.63);
 
         for(int i = 0; i < 7; i++)
             qCurr(i) = currentState._jointPositions[i];
 
         _ikSolver->CartToJnt(qCurr,ee,eqNew);
 
-        for(int i = 0; i < 7; i++)
-            std::cout << qCurr(i) << ", ";
-        std::cout << "\n";
-        for(int i = 0; i < 7; i++)
-            std::cout << eqNew(i) << ", ";
-        std::cout << "\n";
+        float distance = (ee.p - _equilibriumEEPosition.p).Norm();
+        if(distance > 0.1)
+        {
+            std::cerr << "Equilibrium pose jumped too much: " << std::setprecision(4) << distance*100.0 << "cm.\n>>> New pose is discarded.\n";
+            return;
+        }
+
+        std::cout << "[EQ POSE UPDATE]: " << ee.p[0] << ", " << ee.p[1] << ", " << ee.p[2] << "\n";
         
         _meeEquilibriumPose.lock();
             for(int i = 0; i < 7; i++)
                 _equilibriumJointPosition(i) = eqNew(i);
+                _equilibriumEEPosition = KDL::Frame(ee);
         _meeEquilibriumPose.unlock();
     }
 
@@ -851,7 +868,7 @@ namespace KinovaLiralab
                             tau(i) = g(i);
 
                         /* --- Saturate torque --- */
-                        double tau_max[7] = {30,30,30,30,20,20,10};
+                        double tau_max[7] = {30,30,30,30,20,20,20};
                         for(int i=0;i<7;i++)
                             tau(i) = std::clamp(tau(i), -tau_max[i], tau_max[i]);
 

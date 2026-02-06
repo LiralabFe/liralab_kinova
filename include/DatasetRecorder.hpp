@@ -31,6 +31,7 @@ private:
     KinovaLiralab::Robot* _robot;
     FILE* _csvFile;
     cv::VideoCapture _camera;
+    cv::Rect _roi;
     std::vector<KinovaLiralab::RobotState> _robotStates;
     std::vector<cv::Mat> _frames;
     std::atomic<bool> _stopRecording;
@@ -38,7 +39,7 @@ private:
     
 public:
     DatasetRecorder(const std::string folderName, KinovaLiralab::Robot* robot);
-    void StartRecord();
+    void StartRecord(int samplesNumber = -1);
     void StopRecord();
     ~DatasetRecorder();
 };
@@ -57,8 +58,11 @@ DatasetRecorder::DatasetRecorder(const std::string folderName, KinovaLiralab::Ro
     for (auto file : std::filesystem::directory_iterator(_imageFilePath)) // Remove all images in the directory
         std::filesystem::remove_all(file.path());
 
-    int deviceID = 0;   // 0 = webcam default
+    int deviceID = 2;   // 0 = webcam default
     _camera.open(deviceID);
+    _camera.set(cv::CAP_PROP_FRAME_WIDTH,  1280);
+    _camera.set(cv::CAP_PROP_FRAME_HEIGHT, 720);
+    _roi = cv::Rect(335,125, 1100-335, 600-125);
 
     if (!_camera.isOpened()) std::cerr << "Impossibile aprire la webcam (device " << deviceID << ")\n";
 
@@ -79,22 +83,23 @@ DatasetRecorder::DatasetRecorder(const std::string folderName, KinovaLiralab::Ro
 }
 
 
-void DatasetRecorder::StartRecord()
+void DatasetRecorder::StartRecord(int sampleNumber)
 {
     if(_recordingThread.joinable()) {std::cout << "RECORDING ALREADY RUNNING\n"; return;}
     _stopRecording = false;
-    _recordingThread = std::thread([this]()
+    _recordingThread = std::thread([this, sampleNumber]()
     {
         using clock = std::chrono::high_resolution_clock;
-
+        int remainingSample = sampleNumber;
         _robotStates.clear();
         std::vector<double> timestamps;
 
         auto t0 = clock::now();
 
         int recordedFrames = 0;
-        while (!_stopRecording)
+        while ((sampleNumber > 0 && remainingSample > 0) || (sampleNumber <= 0 && !_stopRecording))
         {
+            if(sampleNumber > 0) {remainingSample--; std::cout << "Remaining samples: " << remainingSample << " \n";};
             // === FRAME CAMERA ===
             cv::Mat frame, gray;
 
@@ -102,9 +107,15 @@ void DatasetRecorder::StartRecord()
 
             if (frame.empty()) continue;
 
+            frame = frame(_roi);
             cv::cvtColor(frame, gray, cv::COLOR_BGR2GRAY);
             cv::normalize(gray, gray, 0, 255, cv::NORM_MINMAX);
-            _frames.push_back(gray.clone());
+            //_frames.push_back(gray.clone());
+            
+            std::string name = "img_" + std::to_string(recordedFrames) + ".png";
+            auto path = _imageFilePath / name;
+            std::cout << "Saving " << name << "\n";
+            cv::imwrite(path.string(), frame);
 
             KinovaLiralab::RobotState newState = _robot->GetRobotState();
 
@@ -114,7 +125,7 @@ void DatasetRecorder::StartRecord()
             _robotStates.push_back(newState);
             timestamps.push_back(timestamp);
 
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            std::this_thread::sleep_for(std::chrono::milliseconds(100)); // <-------------------------------------------------------------------- SAMPLE TIME !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
             recordedFrames++;
             if((recordedFrames % 10) == 0) std::cout << "Recorded: " << recordedFrames << std::endl;
         }
@@ -152,12 +163,15 @@ void DatasetRecorder::StartRecord()
             );
         }
 
+        /*
         for (size_t i = 0; i < _frames.size(); ++i)
         {
             std::string name = "img_" + std::to_string(i) + ".png";
             auto path = _imageFilePath / name;
+            std::cout << "Saving " << name << "\n";
             cv::imwrite(path.string(), _frames[i]);
         }
+        */
 
         fflush(_csvFile);
 

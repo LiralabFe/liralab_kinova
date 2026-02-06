@@ -34,6 +34,7 @@
 #include <chrono>
 #include <thread>
 #include <mutex>
+#include <iomanip>
 
 #define PORT 10000
 #define PORT_REALTIME 10001
@@ -105,6 +106,8 @@ namespace KinovaLiralab
         std::mutex _mRobotState;
         std::mutex _meeEquilibriumPose;
         KDL::JntArray _equilibriumJointPosition;
+        KDL::Frame _equilibriumEEPosition;
+
         KinovaLiralab::RobotState _robotState{
             std::vector<float>(7, 0.0f),   // _jointPositions
             std::vector<float>(12, 0.0f),  // _eePose
@@ -114,7 +117,7 @@ namespace KinovaLiralab
 
 
         public:
-            Robot();
+            Robot(std::string urdf_file);
             ~Robot();
             void GoHome();
             void EvaluateJacobian();
