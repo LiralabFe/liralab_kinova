@@ -58,7 +58,7 @@ DatasetRecorder::DatasetRecorder(const std::string folderName, KinovaLiralab::Ro
     for (auto file : std::filesystem::directory_iterator(_imageFilePath)) // Remove all images in the directory
         std::filesystem::remove_all(file.path());
 
-    int deviceID = 2;   // 0 = webcam default
+    int deviceID = 0;   // 0 = webcam default
     _camera.open(deviceID);
     _camera.set(cv::CAP_PROP_FRAME_WIDTH,  1280);
     _camera.set(cv::CAP_PROP_FRAME_HEIGHT, 720);
@@ -89,6 +89,12 @@ void DatasetRecorder::StartRecord(int sampleNumber)
     _stopRecording = false;
     _recordingThread = std::thread([this, sampleNumber]()
     {
+        while(!_camera.isOpened())
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+            std::cout << "Waiting for camera to open...\n";
+        }
+
         using clock = std::chrono::high_resolution_clock;
         int remainingSample = sampleNumber;
         _robotStates.clear();

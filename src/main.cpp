@@ -41,7 +41,7 @@ int main(int argc, char **argv)
 
     robot->StartHandGuidance();
     std::cin.get();
-    datasetRecorder.StartRecord(400);
+    datasetRecorder.StartRecord(600);
     // -------------------
     
 
@@ -51,7 +51,7 @@ int main(int argc, char **argv)
     //robot->SetEquilibriumPose(eeFrame);
 
     // -------------------
-    //std::cin.get();
+    std::cin.get();
     datasetRecorder.StopRecord();
     robot->StopApp();
 
