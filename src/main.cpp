@@ -42,27 +42,37 @@ int main(int argc, char **argv)
     // TerminationHandler::RegisterCallback([&datasetRecorder](){datasetRecorder.StopRecord();});
     TerminationHandler::RegisterCallback([&socket](){socket.CloseSocket();});
 
-    robot->StartHandGuidance();
+    //robot->StartHandGuidance();
     //std::cin.get();
     //datasetRecorder.StartRecord(600);
     // -------------------
 
-    string msg{""};
-    while(true)
-    {
-        KinovaLiralab::RobotState state = robot->GetRobotState();
-        msg.clear();
-        for(auto f : state._jointPositions)
-        {   
-            msg.append(std::to_string(f));
-            msg.append(";");
-        }
-        socket.Write(msg);
-    }
     /* MODIFY Eq Pose Example: */
     //KDL::Frame eeFrame = robot->GetEEFrame();
     //eeFrame.p[0] += 0.07;
     //robot->SetEquilibriumPose(eeFrame);
+
+
+    /* IMITATION LEARNING CONTROL */
+    std::cout << "Position the probe on belly and press ENTER" << std::endl;
+    robot->StartHandGuidance();
+    string msg{""};
+    std::cin.get();
+
+    // ---------- Send initial position
+    KinovaLiralab::RobotState state = robot->GetRobotState();
+    socket.WriteRobotState(state);
+
+    // ---------- Wait acknoledge from python
+    while(socket.Read() != "RUN");
+    robot->StopApp();
+    robot->TorqueControl();
+
+    while(true)
+    {
+        KinovaLiralab::RobotState state = robot->GetRobotState();
+        socket.WriteRobotState(state);
+    }
 
     // -------------------
     std::cin.get();

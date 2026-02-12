@@ -561,7 +561,7 @@ namespace KinovaLiralab
     void Robot::TorqueControl()
     {
         if(_realtimeThread.joinable()) return;  // Another thread is already running
-        
+        _stopApp = false;
         _realtimeThread = thread([this](){
             unsigned int actuator_count = _base->GetActuatorCount().count();
             
@@ -779,7 +779,8 @@ namespace KinovaLiralab
     void Robot::StartHandGuidance()
     {
         if(_realtimeThread.joinable()) return;  // Another thread is already running
-
+        _stopApp = false;
+        
         _realtimeThread = thread([this]() {
             unsigned int actuator_count = _base->GetActuatorCount().count();
             

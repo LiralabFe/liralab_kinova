@@ -3,6 +3,7 @@
 
 #include <iostream>
 #include <string>
+#include <RobotState.hpp>
 #include <unistd.h>
 #include <arpa/inet.h>
 
@@ -18,6 +19,7 @@ namespace KinovaLiralab
         SocketLiralab(uint16_t);
         ~SocketLiralab();
         void CloseSocket();
+        void WriteRobotState(const KinovaLiralab::RobotState&);
         void Write(const std::string&);
         auto Read() -> std::string;
     };
@@ -37,6 +39,17 @@ namespace KinovaLiralab
         std::cout << "Server in ascolto ...\n";
         _client = accept(_server, nullptr, nullptr);
         if (_client < 0) {perror("accept");return;}
+    }
+
+    void SocketLiralab::WriteRobotState(const KinovaLiralab::RobotState& robotState)
+    {
+        std::string msg{""};
+        for(auto f : robotState._eePose)
+        {   
+            msg.append(std::to_string(f));
+            msg.append(";");
+        }
+        Write(msg);
     }
 
     void SocketLiralab::Write(const std::string& msg)
