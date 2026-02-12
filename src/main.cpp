@@ -20,6 +20,7 @@
 #include <KinovaLiralab.hpp>
 #include <DatasetRecorder.hpp>
 #include <TerminationHandler.hpp>
+#include <SocketLiralab.hpp>
 
 #define PORT 10000
 #define PORT_REALTIME 10001
@@ -28,23 +29,36 @@ namespace KORTEX = Kinova::Api;
 
 
 int main(int argc, char **argv)
-{    
-    if(argc < 2) {std::cerr << "\nMissing argument: ['Dataset Name']\n\n"; return -1;}
+{   
+    // if(argc < 2) {std::cerr << "\nMissing argument: ['Dataset Name']\n\n"; return -1;}
 
     TerminationHandler t;
     KinovaLiralab::Robot* robot = new KinovaLiralab::Robot("/home/legion/ROS/kinova_ws/src/ros2_kortex/kortex_description/robots/gen3_ESAOTE_convex_probe.urdf"); // _ESAOTE_convex_probe
-    DatasetRecorder datasetRecorder(static_cast<string>(argv[1]), robot);
+    KinovaLiralab::SocketLiralab socket{5000};
+    // DatasetRecorder datasetRecorder(static_cast<string>(argv[1]), robot);
 
     // Subscribe callbacks for CTRL-C signal
     TerminationHandler::RegisterCallback([&robot](){robot->StopApp();});
-    TerminationHandler::RegisterCallback([&datasetRecorder](){datasetRecorder.StopRecord();});
+    // TerminationHandler::RegisterCallback([&datasetRecorder](){datasetRecorder.StopRecord();});
+    TerminationHandler::RegisterCallback([&socket](){socket.CloseSocket();});
 
     robot->StartHandGuidance();
-    std::cin.get();
-    datasetRecorder.StartRecord(600);
+    //std::cin.get();
+    //datasetRecorder.StartRecord(600);
     // -------------------
-    
 
+    string msg{""};
+    while(true)
+    {
+        KinovaLiralab::RobotState state = robot->GetRobotState();
+        msg.clear();
+        for(auto f : state._jointPositions)
+        {   
+            msg.append(std::to_string(f));
+            msg.append(";");
+        }
+        socket.Write(msg);
+    }
     /* MODIFY Eq Pose Example: */
     //KDL::Frame eeFrame = robot->GetEEFrame();
     //eeFrame.p[0] += 0.07;
@@ -52,7 +66,6 @@ int main(int argc, char **argv)
 
     // -------------------
     std::cin.get();
-    datasetRecorder.StopRecord();
+    //datasetRecorder.StopRecord();
     robot->StopApp();
-
 }
