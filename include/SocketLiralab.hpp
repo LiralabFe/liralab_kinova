@@ -6,6 +6,7 @@
 #include <RobotState.hpp>
 #include <unistd.h>
 #include <arpa/inet.h>
+#include <kdl/kdl.hpp>
 
 namespace KinovaLiralab
 {
@@ -15,17 +16,21 @@ namespace KinovaLiralab
         int _server;
         int _client;
         char buffer[1024] = {0};
+        std::function<void()> _brokenPipeCallback;
+
     public:
-        SocketLiralab(uint16_t);
+        SocketLiralab(uint16_t, std::function<void()>);
         ~SocketLiralab();
         void CloseSocket();
         int WriteRobotState(const KinovaLiralab::RobotState&);
         int Write(const std::string&);
         auto Read() -> std::string;
+        int ReadFrame(KDL::Frame&);
     };
     
-    SocketLiralab::SocketLiralab(uint16_t port)
+    SocketLiralab::SocketLiralab(uint16_t port, std::function<void()> brokenPipeCallback)
     {
+        _brokenPipeCallback = brokenPipeCallback;
         _server = socket(AF_INET, SOCK_STREAM, 0);
         if (_server < 0) {perror("socket"); return;}
 
@@ -59,7 +64,7 @@ namespace KinovaLiralab
         if(ret < 0)
         {
             std::cout << "Errore nella send della socket." << std::endl;
-            return -1;
+            _brokenPipeCallback();
         }
         return 0;
     }
@@ -71,6 +76,37 @@ namespace KinovaLiralab
         std::string received(buffer);
         std::cout << "<<< " << received << "\n";
         return received;
+    }
+
+    int SocketLiralab::ReadFrame(KDL::Frame& outFrame)
+    {
+        std::string resultAsString = Read();
+
+        std::vector<double> v;
+        std::stringstream ss(resultAsString);
+        std::string token;
+
+        while (std::getline(ss, token, ';')) {
+        v.push_back(std::stod(token));
+        }
+
+        if (v.size() != 12) {
+            std::cout << "String must contain exactly 12 values" << std::endl;
+            _brokenPipeCallback();
+            return -1;
+        }
+
+        KDL::Vector p(v[0], v[1], v[2]);
+
+        KDL::Rotation R(
+        v[3],  v[4],  v[5],
+        v[6],  v[7],  v[8],
+        v[9],  v[10], v[11]
+        );
+
+        outFrame.p = p;
+        outFrame.M = R;
+        return 0;
     }
     
     void SocketLiralab::CloseSocket()

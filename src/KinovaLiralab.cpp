@@ -763,7 +763,7 @@ namespace KinovaLiralab
         }
 
         std::cout << "[EQ POSE UPDATE]: " << ee.p[0] << ", " << ee.p[1] << ", " << ee.p[2] << "\n";
-        
+        return;
         _meeEquilibriumPose.lock();
             for(int i = 0; i < 7; i++)
                 _equilibriumJointPosition(i) = eqNew(i);

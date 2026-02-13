@@ -34,7 +34,7 @@ int main(int argc, char **argv)
 
     TerminationHandler t;
     KinovaLiralab::Robot* robot = new KinovaLiralab::Robot("/home/legion/ROS/kinova_ws/src/ros2_kortex/kortex_description/robots/gen3_ESAOTE_convex_probe.urdf"); // _ESAOTE_convex_probe
-    KinovaLiralab::SocketLiralab socket{5000};
+    KinovaLiralab::SocketLiralab socket{5000, [&robot]{robot->StopApp();}};
     // DatasetRecorder datasetRecorder(static_cast<string>(argv[1]), robot);
 
     // Subscribe callbacks for CTRL-C signal
@@ -62,26 +62,22 @@ int main(int argc, char **argv)
     // ---------- Send initial position
     std::this_thread::sleep_for(std::chrono::milliseconds(1000));
     KinovaLiralab::RobotState state = robot->GetRobotState();
-    if(socket.WriteRobotState(state) < 0) 
-    {
-        robot->StopApp();
-        return -1;
-    }
+    socket.WriteRobotState(state);
 
     // ---------- Wait acknoledge from python
     while(socket.Read() != "RUN");
     robot->StopApp();
     robot->TorqueControl();
 
+    KDL::Frame newFrame{};
     while(true)
     {
         KinovaLiralab::RobotState state = robot->GetRobotState();
-        if(socket.WriteRobotState(state) < 0) 
-        {
-            robot->StopApp();
-            return -1;
-        }
-        socket.Read();
+        socket.WriteRobotState(state);
+        
+        if(socket.ReadFrame(newFrame) < 0) break;
+
+        robot->SetEquilibriumPose(newFrame);
     }
 
     // -------------------
