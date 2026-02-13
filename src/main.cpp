@@ -60,8 +60,13 @@ int main(int argc, char **argv)
     std::cin.get();
 
     // ---------- Send initial position
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
     KinovaLiralab::RobotState state = robot->GetRobotState();
-    socket.WriteRobotState(state);
+    if(socket.WriteRobotState(state) < 0) 
+    {
+        robot->StopApp();
+        return -1;
+    }
 
     // ---------- Wait acknoledge from python
     while(socket.Read() != "RUN");
@@ -71,7 +76,12 @@ int main(int argc, char **argv)
     while(true)
     {
         KinovaLiralab::RobotState state = robot->GetRobotState();
-        socket.WriteRobotState(state);
+        if(socket.WriteRobotState(state) < 0) 
+        {
+            robot->StopApp();
+            return -1;
+        }
+        socket.Read();
     }
 
     // -------------------

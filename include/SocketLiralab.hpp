@@ -19,8 +19,8 @@ namespace KinovaLiralab
         SocketLiralab(uint16_t);
         ~SocketLiralab();
         void CloseSocket();
-        void WriteRobotState(const KinovaLiralab::RobotState&);
-        void Write(const std::string&);
+        int WriteRobotState(const KinovaLiralab::RobotState&);
+        int Write(const std::string&);
         auto Read() -> std::string;
     };
     
@@ -41,7 +41,7 @@ namespace KinovaLiralab
         if (_client < 0) {perror("accept");return;}
     }
 
-    void SocketLiralab::WriteRobotState(const KinovaLiralab::RobotState& robotState)
+    int SocketLiralab::WriteRobotState(const KinovaLiralab::RobotState& robotState)
     {
         std::string msg{""};
         for(auto f : robotState._eePose)
@@ -49,12 +49,19 @@ namespace KinovaLiralab
             msg.append(std::to_string(f));
             msg.append(";");
         }
-        Write(msg);
+        std::cout << ">>> " << msg << "\n";
+        return Write(msg);
     }
 
-    void SocketLiralab::Write(const std::string& msg)
+    int SocketLiralab::Write(const std::string& msg)
     {
-        send(_client, msg.c_str(), msg.size(), 0);
+        ssize_t ret = send(_client, (msg + "\n").c_str(), msg.size(), MSG_NOSIGNAL);
+        if(ret < 0)
+        {
+            std::cout << "Errore nella send della socket." << std::endl;
+            return -1;
+        }
+        return 0;
     }
 
     std::string SocketLiralab::Read()
@@ -62,6 +69,7 @@ namespace KinovaLiralab
         ssize_t bytes = recv(_client, buffer, sizeof(buffer) - 1, 0);
         if (bytes <= 0) { perror("recv");return ""; }
         std::string received(buffer);
+        std::cout << "<<< " << received << "\n";
         return received;
     }
     

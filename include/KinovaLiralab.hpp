@@ -61,6 +61,7 @@ namespace KinovaLiralab
         KORTEX::RouterClient* _routerRealTime;
         KORTEX::SessionManager* _sessionRealTime;
         KORTEX::BaseCyclic::BaseCyclicClient* _baseRealTime;
+        KORTEX::ActuatorConfig::ActuatorConfigClient* _actuatorConfig;
         //-------
         // static Callbacks
         constexpr static void ErrorCallback(KORTEX::KError e) {std::cout << "_________ callback error _________" << e.toString();}

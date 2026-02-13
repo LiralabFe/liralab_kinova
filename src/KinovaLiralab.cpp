@@ -31,6 +31,7 @@ namespace KinovaLiralab
 
         _base = new KORTEX::Base::BaseClient(_router);
         _baseRealTime = new KORTEX::BaseCyclic::BaseCyclicClient(_routerRealTime);
+        _actuatorConfig = new KORTEX::ActuatorConfig::ActuatorConfigClient(_router);
 
         // setup kdl
         _urdfModel.initFile(urdf_file);
@@ -66,12 +67,12 @@ namespace KinovaLiralab
     Robot::~Robot()
     {
         std::cout << "--[DISCONNECTING]--" << std::endl;
-        auto actuator_config = KORTEX::ActuatorConfig::ActuatorConfigClient(_router);
+        //auto actuator_config = KORTEX::ActuatorConfig::ActuatorConfigClient(_router);
         auto control_mode_message = KORTEX::ActuatorConfig::ControlModeInformation();
         control_mode_message.set_control_mode(KORTEX::ActuatorConfig::ControlMode::POSITION);
 
         for(int i = 1; i < 8; i++)
-            actuator_config.SetControlMode(control_mode_message, i);
+            _actuatorConfig->SetControlMode(control_mode_message, i);
         
         std::cout << "Closing..." << std::endl;
         _session->CloseSession();
@@ -388,7 +389,7 @@ namespace KinovaLiralab
         
         KORTEX::BaseCyclic::Feedback base_feedback;
         KORTEX::BaseCyclic::Command  base_command;
-        auto actuator_config = KORTEX::ActuatorConfig::ActuatorConfigClient(_router);
+        // auto actuator_config = KORTEX::ActuatorConfig::ActuatorConfigClient(_router);
 
         std::vector<float> commands;
 
@@ -437,7 +438,7 @@ namespace KinovaLiralab
             control_mode_message.set_control_mode(KORTEX::ActuatorConfig::ControlMode::TORQUE);
             
             for(int i = 1; i < 8; i++)  // NOTE!!! Joint Device IDs are from [1-8]
-                actuator_config.SetControlMode(control_mode_message, i);
+                _actuatorConfig->SetControlMode(control_mode_message, i);
 
             // Real-time loop
             bool change = true;
@@ -536,7 +537,7 @@ namespace KinovaLiralab
             control_mode_message.set_control_mode(KORTEX::ActuatorConfig::ControlMode::POSITION);
 
             for(int i = 1; i < 8; i++)
-                actuator_config.SetControlMode(control_mode_message, i);
+                _actuatorConfig->SetControlMode(control_mode_message, i);
 
             std::cout << "Torque control example clean exit" << std::endl;
 
@@ -567,12 +568,10 @@ namespace KinovaLiralab
             
             KORTEX::BaseCyclic::Feedback base_feedback;
             KORTEX::BaseCyclic::Command  base_command;
-            auto actuator_config = KORTEX::ActuatorConfig::ActuatorConfigClient(_router);
 
             std::vector<float> commands;
 
             auto servoing_mode = KORTEX::Base::ServoingModeInformation();
-
             int timer_count = 0;
             int64_t now = 0;
             int64_t last = 0;
@@ -611,15 +610,14 @@ namespace KinovaLiralab
                     eq(i) = _equilibriumJointPosition(i);
                 }
                 _meeEquilibriumPose.unlock();
-
                 // Send a first frame
                 base_feedback = _baseRealTime->Refresh(base_command);
                 // Set actuators in torque mode now that the command is equal to measure
                 auto control_mode_message = KORTEX::ActuatorConfig::ControlModeInformation();
                 control_mode_message.set_control_mode(KORTEX::ActuatorConfig::ControlMode::TORQUE);
-                
+
                 for(int i = 1; i < 8; i++)  // NOTE!!! Joint Device IDs are from [1-8]
-                    actuator_config.SetControlMode(control_mode_message, i);
+                    _actuatorConfig->SetControlMode(control_mode_message, i);
 
                 // Real-time loop
                 bool change = true;
@@ -707,7 +705,7 @@ namespace KinovaLiralab
                 control_mode_message.set_control_mode(KORTEX::ActuatorConfig::ControlMode::POSITION);
 
                 for(int i = 1; i < 8; i++)
-                    actuator_config.SetControlMode(control_mode_message, i);
+                    _actuatorConfig->SetControlMode(control_mode_message, i);
 
                 std::cout << "Torque control example clean exit" << std::endl;
 
@@ -786,7 +784,6 @@ namespace KinovaLiralab
             
             KORTEX::BaseCyclic::Feedback base_feedback;
             KORTEX::BaseCyclic::Command  base_command;
-            auto actuator_config = KORTEX::ActuatorConfig::ActuatorConfigClient(_router);
 
             auto servoing_mode = KORTEX::Base::ServoingModeInformation();
 
@@ -806,14 +803,14 @@ namespace KinovaLiralab
             torque_offset_message.set_torque_offset(0.0);
             for(int i = 1; i <= 7; i++)
             {
-                actuator_config.SetTorqueOffset(torque_offset_message, i);
+                _actuatorConfig->SetTorqueOffset(torque_offset_message, i);
             }
             usleep(1500000); // 1.5 second
 
             for(int i = 1; i <= 7; i++)
             {
                 std::cout << i << std::endl;
-                auto torque_offset = actuator_config.GetTorqueOffset(i);
+                auto torque_offset = _actuatorConfig->GetTorqueOffset(i);
                 std::cout << "TorqueOffset: " << torque_offset.torque_offset() << std::endl;
             }
             return;
@@ -843,7 +840,7 @@ namespace KinovaLiralab
                 control_mode_message.set_control_mode(KORTEX::ActuatorConfig::ControlMode::TORQUE);
                 
                 for(int i = 1; i < 8; i++)  // NOTE!!! Joint Device IDs are from [1-8]
-                    actuator_config.SetControlMode(control_mode_message, i);
+                    _actuatorConfig->SetControlMode(control_mode_message, i);
 
                 // Real-time loop
                 while (!_stopApp) // timer_count < (10.5 * 1000)
@@ -915,7 +912,7 @@ namespace KinovaLiralab
                 control_mode_message.set_control_mode(KORTEX::ActuatorConfig::ControlMode::POSITION);
 
                 for(int i = 1; i < 8; i++)
-                    actuator_config.SetControlMode(control_mode_message, i);
+                    _actuatorConfig->SetControlMode(control_mode_message, i);
 
                 std::cout << "[POSITION CONTROL]" << std::endl;
 
