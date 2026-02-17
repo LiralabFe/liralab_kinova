@@ -741,6 +741,7 @@ namespace KinovaLiralab
 
         KDL::JntArray qCurr(7);
         KDL::JntArray eqNew(7);
+        KDL::Vector eeCurrent{currentState._eePose[0], currentState._eePose[1], currentState._eePose[2]};
 
         // Bounding Box -----
         if(ee.p[0] < 0.18 || ee.p[0] > 0.54) std::cout << "Clamping " << ee.p[0] << " (X coord).\n";
@@ -750,20 +751,20 @@ namespace KinovaLiralab
         ee.p[1] = std::clamp(ee.p[1], -0.3, 0.22);
         ee.p[2] = std::clamp(ee.p[2], 0.17, 0.63);
 
+        float distance = (ee.p - eeCurrent).Norm();
+        if(distance > 0.06)
+        {
+            std::cerr << "Equilibrium pose jumped too much: " << std::setprecision(4) << distance*100.0 << "cm.\n";
+            return;
+        }
+
         for(int i = 0; i < 7; i++)
             qCurr(i) = currentState._jointPositions[i];
 
         _ikSolver->CartToJnt(qCurr,ee,eqNew);
 
-        float distance = (ee.p - _equilibriumEEPosition.p).Norm();
-        if(distance > 0.1)
-        {
-            std::cerr << "Equilibrium pose jumped too much: " << std::setprecision(4) << distance*100.0 << "cm.\n>>> New pose is discarded.\n";
-            return;
-        }
+        std::cout << "[OLD EE POSE]: " << eeCurrent[0] << ", " << eeCurrent[1] << ", " << eeCurrent[2] << "\n[EQ POSE UPDATE]: " << ee.p[0] << ", " << ee.p[1] << ", " << ee.p[2] << "\n";
 
-        std::cout << "[EQ POSE UPDATE]: " << ee.p[0] << ", " << ee.p[1] << ", " << ee.p[2] << "\n";
-        return;
         _meeEquilibriumPose.lock();
             for(int i = 0; i < 7; i++)
                 _equilibriumJointPosition(i) = eqNew(i);

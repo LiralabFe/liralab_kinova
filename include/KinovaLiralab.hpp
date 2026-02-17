@@ -107,7 +107,8 @@ namespace KinovaLiralab
         std::mutex _mRobotState;
         std::mutex _meeEquilibriumPose;
         KDL::JntArray _equilibriumJointPosition;
-        KDL::Frame _equilibriumEEPosition;
+        KDL::Frame _equilibriumEEPosition;          // The one followed by joints
+        KDL::Frame _virtualEquilibriumEEPosition;   // The one followed by _equilibriumEEPosition
 
         KinovaLiralab::RobotState _robotState{
             std::vector<float>(7, 0.0f),   // _jointPositions
