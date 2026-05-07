@@ -761,9 +761,10 @@ namespace KinovaLiralab
         for(int i = 0; i < 7; i++)
             qCurr(i) = currentState._jointPositions[i];
 
-        _ikSolver->CartToJnt(qCurr,ee,eqNew);
-
-        std::cout << "[OLD EE POSE]: " << eeCurrent[0] << ", " << eeCurrent[1] << ", " << eeCurrent[2] << "\n[EQ POSE UPDATE]: " << ee.p[0] << ", " << ee.p[1] << ", " << ee.p[2] << "\n";
+        int ikRes = _ikSolver->CartToJnt(qCurr,ee,eqNew);
+        if(ikRes != 0) std::cout << ikRes << "\n";
+        //std::cout << eqNew(0) << "\n" << eqNew(1) << "\n" << eqNew(2) 
+        // std::cout << "[OLD EE POSE]: " << eeCurrent[0] << ", " << eeCurrent[1] << ", " << eeCurrent[2] << "\n[EQ POSE UPDATE]: " << ee.p[0] << ", " << ee.p[1] << ", " << ee.p[2] << "\n";
 
         _meeEquilibriumPose.lock();
             for(int i = 0; i < 7; i++)

@@ -41,7 +41,7 @@ namespace KinovaLiralab
 
         if (bind(_server, (sockaddr*)&addr, sizeof(addr)) < 0) {perror("bind");return;}
         listen(_server, 1);
-        std::cout << "Server in ascolto ...\n";
+        std::cout << "Server in ascolto ..." << std::endl;
         _client = accept(_server, nullptr, nullptr);
         if (_client < 0) {perror("accept");return;}
     }
@@ -91,7 +91,7 @@ namespace KinovaLiralab
         }
 
         if (v.size() != 12) {
-            std::cout << "String must contain exactly 12 values" << std::endl;
+            std::cout << "String must contain exactly 12 values:\nREAD: " << resultAsString << std::endl;
             _brokenPipeCallback();
             return -1;
         }

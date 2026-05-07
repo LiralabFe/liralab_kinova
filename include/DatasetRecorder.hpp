@@ -58,7 +58,7 @@ DatasetRecorder::DatasetRecorder(const std::string folderName, KinovaLiralab::Ro
     for (auto file : std::filesystem::directory_iterator(_imageFilePath)) // Remove all images in the directory
         std::filesystem::remove_all(file.path());
 
-    int deviceID = 0;   // 0 = webcam default
+    int deviceID = 2;   // 0 = webcam default
     _camera.open(deviceID);
     _camera.set(cv::CAP_PROP_FRAME_WIDTH,  1280);
     _camera.set(cv::CAP_PROP_FRAME_HEIGHT, 720);
