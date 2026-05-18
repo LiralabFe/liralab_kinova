@@ -10,6 +10,8 @@
 #include <TerminationHandler.hpp>
 #include <SocketLiralab.hpp>
 #include <AurovasSocket.hpp>
+#include <thread>
+#include <chrono>
 
 #define PORT 10000
 #define PORT_REALTIME 10001
@@ -24,7 +26,6 @@ int main(int argc, char **argv)
     /* ******************************************** */
     /* *********** REGISTER NEW EPISODES ********** */
     /* ******************************************** */
-
     /*
     if(argc < 2) {std::cerr << "\nMissing argument: ['Dataset Name']\n\n"; return -1;}
 
@@ -42,8 +43,8 @@ int main(int argc, char **argv)
     std::cin.get();
     datasetRecorder.StopRecord();
     robot->StopApp();
+    
     */
-
 
     /* ******************************************** */
     /* **************** RUN ACT ******************* */
@@ -89,9 +90,10 @@ int main(int argc, char **argv)
     /* ******************************************** */
     /* **************** AUROVAS KINOVA ************ */
     /* ******************************************** */
+    
     TerminationHandler t;
     AurovasSocket socket;
-    KinovaLiralab::Robot* robot = new KinovaLiralab::Robot("/home/j/ros2_ws/src/liralab_kinova/urdf/gen3_ESAOTE_convex_probe.urdf"); // _ESAOTE_convex_probe
+    KinovaLiralab::Robot* robot = new KinovaLiralab::Robot("/home/legion/ROS/kinova_ws/src/ros2_kortex/kortex_description/robots/gen3_ESAOTE_convex_probe.urdf"); // _ESAOTE_convex_probe
 
     TerminationHandler::RegisterCallback([&robot](){robot->StopApp();});
     TerminationHandler::RegisterCallback([&socket](){socket.CloseSocket();});
@@ -104,27 +106,49 @@ int main(int argc, char **argv)
     robot->StartHandGuidance();
     std::cin.get();
     robot->StopApp();
-    socket.Read();  // GLOBALSEARCH;5,5,8,8,35,10
+    std::vector<string> msg = socket.Read();  // GLOBALSEARCH;5,5,8,8,35,10
+    int row = std::stoi(msg[1]);
+    int col = std::stoi(msg[2]);
+    int dist = std::stoi(msg[3]);
+    int x = 0;
+    int dir = 1; // 1 = avanti, -1 = indietro
+
     socket.Write("HANDGUIDING;WAITING");
     socket.Write("WAITING;GLOBALSEARCH");
 
     robot->TorqueControl();
-    while(true)
+    std::this_thread::sleep_for(std::chrono::seconds(1));
+    KDL::Frame eeInitial = robot->GetEEFrame();
+    for(int y = 0; y < col; y++)
     {
-        std::cout << "Moving" << std::endl;
-        //robot
-        KDL::Frame eeFrame = robot->GetEEFrame();
-        eeFrame.p[0] -= 0.015;
-        robot->SetEquilibriumPose(eeFrame);
-        std::cin.get();
-        std::cout << "Segmentation" << std::endl;
-        if(socket.Read()[0] == "True") break;
-        socket.Write("TEST;TEST");
+        for(int step = 0; step < row; step++)
+        {
+            std::cout << "Moving " << x << ", " << y << std::endl;
+
+            KDL::Frame eeFrame = eeInitial;
+            eeFrame.p[0] -= dist/100.0 * x;
+            eeFrame.p[1] += dist/100.0 * y;
+
+            robot->SetEquilibriumPose(eeFrame);
+            std::cout << "Segmentation" << std::endl;
+
+            std::this_thread::sleep_for(std::chrono::seconds(2));
+            std::cin.get();
+            if(socket.Read()[0] == "True") break;
+            socket.Write("TEST;TEST");       
+            if(step < 4)
+                x += dir;
+        }
+
+        dir *= -1;
     }
+    
     socket.Write("GLOBALSEARCH;LOCALSEARCH");
-    /* LOCAL SEARCH */
+    // LOCAL SEARCH
     socket.Read();
     socket.Write("LOCALSEARCH;WAITING");
+    
+    robot->StopApp();
 
     robot->StopApp();
 
