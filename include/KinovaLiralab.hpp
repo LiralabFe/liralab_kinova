@@ -64,7 +64,7 @@ namespace KinovaLiralab
         KORTEX::ActuatorConfig::ActuatorConfigClient* _actuatorConfig;
         //-------
         // static Callbacks
-        constexpr static void ErrorCallback(KORTEX::KError e) {std::cout << "_________ callback error _________" << e.toString();}
+        static void ErrorCallback(KORTEX::KError e) {std::cout << "_________ callback error _________" << e.toString();}
         static std::function<void(KORTEX::Base::ActionNotification)> CheckForEndOrAbort(bool& finished)
         {
             return [&finished](KORTEX::Base::ActionNotification notification)
@@ -85,7 +85,7 @@ namespace KinovaLiralab
         }
         //-------
         // private functions
-        constexpr void Print(std::string_view s) { std::cout << s << std::endl;}
+        void Print(std::string_view s) { std::cout << s << std::endl;}
         int64_t GetTickUs();
         void PrintException(KORTEX::KDetailedException& ex);
         void UpdateRobotState(
