@@ -58,13 +58,29 @@ DatasetRecorder::DatasetRecorder(const std::string folderName, KinovaLiralab::Ro
     for (auto file : std::filesystem::directory_iterator(_imageFilePath)) // Remove all images in the directory
         std::filesystem::remove_all(file.path());
 
-    int deviceID = 0;   // 0 = webcam default
-    _camera.open(deviceID);
-    _camera.set(cv::CAP_PROP_FRAME_WIDTH,  1280);
-    _camera.set(cv::CAP_PROP_FRAME_HEIGHT, 720);
+    //int deviceID = 0;   // 0 = webcam default
+    //_camera.open(deviceID);
+    //_camera.set(cv::CAP_PROP_FRAME_WIDTH,  1280);
+    //_camera.set(cv::CAP_PROP_FRAME_HEIGHT, 720);
     _roi = cv::Rect(335,125, 1100-335, 600-125);
 
-    if (!_camera.isOpened()) std::cerr << "Impossibile aprire la webcam (device " << deviceID << ")\n";
+    for(int id = 0; id < 6; id++)
+    {
+        _camera.open(id);
+        _camera.set(cv::CAP_PROP_FRAME_WIDTH,  1280);
+        _camera.set(cv::CAP_PROP_FRAME_HEIGHT, 720);
+        if (!_camera.isOpened())
+        {
+            std::cerr << "Impossibile aprire la webcam (device " << id << ")\n";
+            _camera.release();
+        }
+        else 
+        {
+            std::cerr << "\n\nUsing device id " << id << "\n";
+            break;
+        }
+    }
+
 
     if (!_csvFile) perror("Errore apertura file CSV");
     else

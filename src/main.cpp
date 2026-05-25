@@ -26,7 +26,6 @@ int main(int argc, char **argv)
     /* ******************************************** */
     /* *********** REGISTER NEW EPISODES ********** */
     /* ******************************************** */
-    /*
     if(argc < 2) {std::cerr << "\nMissing argument: ['Dataset Name']\n\n"; return -1;}
 
     TerminationHandler t;
@@ -36,15 +35,14 @@ int main(int argc, char **argv)
     // Subscribe callbacks for CTRL-C signal
     TerminationHandler::RegisterCallback([&robot](){robot->StopApp();});
     TerminationHandler::RegisterCallback([&datasetRecorder](){datasetRecorder.StopRecord();});
-
+    
     robot->StartHandGuidance();
     std::cin.get();
     datasetRecorder.StartRecord(600);   
     std::cin.get();
     datasetRecorder.StopRecord();
     robot->StopApp();
-    
-    */
+
 
     /* ******************************************** */
     /* **************** RUN ACT ******************* */
@@ -90,7 +88,7 @@ int main(int argc, char **argv)
     /* ******************************************** */
     /* **************** AUROVAS KINOVA ************ */
     /* ******************************************** */
-    
+    /*
     TerminationHandler t;
     AurovasSocket socket;
     KinovaLiralab::Robot* robot = new KinovaLiralab::Robot("/home/legion/ROS/kinova_ws/src/ros2_kortex/kortex_description/robots/gen3_ESAOTE_convex_probe.urdf"); // _ESAOTE_convex_probe
@@ -149,8 +147,8 @@ int main(int argc, char **argv)
     socket.Write("LOCALSEARCH;WAITING");
     
     robot->StopApp();
-
-    robot->StopApp();
+    */
+    // robot->StopApp();
 
     
     // Subscribe callbacks for CTRL-C signal
