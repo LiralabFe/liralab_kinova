@@ -1,3 +1,144 @@
+/*
+#include <arpa/inet.h>
+#include <netdb.h>
+#include <sys/socket.h>
+#include <unistd.h>
+
+#include <array>
+#include <cstdint>
+#include <cstring>
+#include <iostream>
+#include <string>
+
+constexpr uint16_t PORT = 49152;       // Porta Net F/T
+constexpr uint16_t COMMAND = 2;        // Start streaming
+constexpr uint32_t NUM_SAMPLES = 1;    // Numero di campioni
+
+struct Response
+{
+    uint32_t rdt_sequence;
+    uint32_t ft_sequence;
+    uint32_t status;
+    std::array<int32_t, 6> FTData;
+};
+
+int main(int argc, char** argv)
+{
+    const std::array<const char*, 6> axes =
+    {
+        "Fx", "Fy", "Fz",
+        "Tx", "Ty", "Tz"
+    };
+
+    // Apertura socket UDP
+    int socketHandle = socket(AF_INET, SOCK_DGRAM, 0);
+
+    if (socketHandle < 0)
+    {
+        std::cerr << "Unable to create socket.\n";
+        return 1;
+    }
+
+    // Costruzione richiesta
+    std::array<uint8_t, 8> request{};
+
+    *reinterpret_cast<uint16_t*>(&request[0]) = htons(0x1234);
+    *reinterpret_cast<uint16_t*>(&request[2]) = htons(COMMAND);
+    *reinterpret_cast<uint32_t*>(&request[4]) = htonl(NUM_SAMPLES);
+
+    // Risoluzione hostname/IP
+    hostent* he = gethostbyname("192.168.1.1");
+
+    if (he == nullptr)
+    {
+        std::cerr << "Unable to resolve host\n";
+        close(socketHandle);
+        return 2;
+    }
+
+    sockaddr_in addr{};
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(PORT);
+
+    std::memcpy(
+        &addr.sin_addr,
+        he->h_addr_list[0],
+        he->h_length);
+
+    // Connessione UDP
+    if (connect(socketHandle,
+                reinterpret_cast<sockaddr*>(&addr),
+                sizeof(addr)) < 0)
+    {
+        std::cerr << "Connection failed.\n";
+        close(socketHandle);
+        return 3;
+    }
+
+    // Invio richiesta
+    if (send(socketHandle,
+             request.data(),
+             request.size(),
+             0) < 0)
+    {
+        std::cerr << "Send failed.\n";
+        close(socketHandle);
+        return 4;
+    }
+
+    // Ricezione risposta
+    std::array<uint8_t, 36> rawResponse{};
+
+    ssize_t received = recv(socketHandle,
+                            rawResponse.data(),
+                            rawResponse.size(),
+                            0);
+
+    if (received != static_cast<ssize_t>(rawResponse.size()))
+    {
+        std::cerr << "Receive failed.\n";
+        close(socketHandle);
+        return 5;
+    }
+
+    Response resp{};
+
+    resp.rdt_sequence =
+        ntohl(*reinterpret_cast<uint32_t*>(&rawResponse[0]));
+
+    resp.ft_sequence =
+        ntohl(*reinterpret_cast<uint32_t*>(&rawResponse[4]));
+
+    resp.status =
+        ntohl(*reinterpret_cast<uint32_t*>(&rawResponse[8]));
+
+    for (int i = 0; i < 6; ++i)
+    {
+        resp.FTData[i] =
+            ntohl(*reinterpret_cast<int32_t*>(
+                &rawResponse[12 + i * 4]));
+    }
+
+    // Stampa risultati
+    std::cout << "Status: 0x"
+              << std::hex << resp.status
+              << std::dec << '\n';
+
+    for (int i = 0; i < 6; ++i)
+    {
+        std::cout << axes[i]
+                  << ": "
+                  << resp.FTData[i]
+                  << '\n';
+    }
+
+    close(socketHandle);
+
+    return 0;
+}
+
+*/
+
 #include <SessionManager.h>
 #include <BaseClientRpc.h>
 #include <BaseCyclicClientRpc.h>
@@ -22,12 +163,12 @@ namespace KORTEX = Kinova::Api;
 int main(int argc, char **argv)
 {   
     // Uncomment the application
-
-    /* ******************************************** */
-    /* *********** REGISTER NEW EPISODES ********** */
-    /* ******************************************** */
-    if(argc < 2) {std::cerr << "\nMissing argument: ['Dataset Name']\n\n"; return -1;}
-
+    
+    // ******************************************** 
+    // *********** REGISTER NEW EPISODES **********
+    // ********************************************
+    // if(argc < 2) {std::cerr << "\nMissing argument: ['Dataset Name']\n\n"; return -1;}
+    /*
     TerminationHandler t;
     KinovaLiralab::Robot* robot = new KinovaLiralab::Robot("/home/legion/ROS/kinova_ws/src/ros2_kortex/kortex_description/robots/gen3_ESAOTE_convex_probe.urdf"); // _ESAOTE_convex_probe
     DatasetRecorder datasetRecorder(static_cast<string>(argv[1]), robot);
@@ -42,11 +183,11 @@ int main(int argc, char **argv)
     std::cin.get();
     datasetRecorder.StopRecord();
     robot->StopApp();
+    */    
 
-
-    /* ******************************************** */
-    /* **************** RUN ACT ******************* */
-    /* ******************************************** */
+    // ********************************************
+    // **************** RUN ACT *******************
+    // ********************************************
     
     /*
     TerminationHandler t;
@@ -85,9 +226,10 @@ int main(int argc, char **argv)
     std::cin.get();
     robot->StopApp();
     */
-    /* ******************************************** */
-    /* **************** AUROVAS KINOVA ************ */
-    /* ******************************************** */
+
+    // ********************************************
+    // **************** AUROVAS KINOVA ************
+    // ********************************************
     /*
     TerminationHandler t;
     AurovasSocket socket;

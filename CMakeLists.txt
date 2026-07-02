@@ -1,10 +1,11 @@
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_C_COMPILER gcc-12)
-set(CMAKE_CXX_COMPILER g++-12)
+#set(CMAKE_C_COMPILER gcc-12)
+#set(CMAKE_CXX_COMPILER g++-12)
 
 cmake_minimum_required(VERSION 3.5)
 project(liralab_kinova)
+#set(OpenCV_DIR "/home/legion/opencv-4.13.0/build")
 
 # Trova i pacchetti ROS 2 necessari
 find_package(ament_cmake REQUIRED)
@@ -17,7 +18,7 @@ find_package(kdl_parser REQUIRED)
 find_package(urdf REQUIRED)
 find_package(urdfdom REQUIRED)
 find_package(urdfdom_headers REQUIRED)
-find_package(OpenCV REQUIRED PATHS ~/opencv-4.13.0)
+find_package(OpenCV REQUIRED)
 
 
 # Aggiungi la directory include al progetto (include tutte le sottocartelle)

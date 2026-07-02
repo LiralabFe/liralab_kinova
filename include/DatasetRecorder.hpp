@@ -7,6 +7,7 @@
 #include <vector>
 #include <KinovaLiralab.hpp>
 #include <chrono>
+#include <opencv2/opencv.hpp>
 #include <opencv2/core.hpp>
 #include <opencv2/videoio.hpp>
 #include <opencv2/imgproc.hpp>
@@ -39,6 +40,7 @@ private:
     
 public:
     DatasetRecorder(const std::string folderName, KinovaLiralab::Robot* robot);
+    bool ContainsPureGreenPixel(const cv::Mat& frame);
     void StartRecord(int samplesNumber = -1);
     void StopRecord();
     ~DatasetRecorder();
@@ -63,12 +65,19 @@ DatasetRecorder::DatasetRecorder(const std::string folderName, KinovaLiralab::Ro
     //_camera.set(cv::CAP_PROP_FRAME_WIDTH,  1280);
     //_camera.set(cv::CAP_PROP_FRAME_HEIGHT, 720);
     _roi = cv::Rect(335,125, 1100-335, 600-125);
+    std::cout << "VERSION :" << CV_VERSION << std::endl;
 
-    for(int id = 0; id < 6; id++)
+    int id;
+    for(id = 0; id < 6; id++)
     {
         _camera.open(id);
         _camera.set(cv::CAP_PROP_FRAME_WIDTH,  1280);
         _camera.set(cv::CAP_PROP_FRAME_HEIGHT, 720);
+        //_camera.set(cv::CAP_PROP_FOURCC, cv::VideoWriter::fourcc('M','J','P','G'));
+
+        //cap = cv2.VideoCapture("/dev/video0", cv2.CAP_V4L2)
+
+        //cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
         if (!_camera.isOpened())
         {
             std::cerr << "Impossibile aprire la webcam (device " << id << ")\n";
@@ -81,6 +90,18 @@ DatasetRecorder::DatasetRecorder(const std::string folderName, KinovaLiralab::Ro
         }
     }
 
+    cv::Mat frame;
+    while(true)
+    {
+        _camera >> frame;
+        if(ContainsPureGreenPixel(frame) == 0) break;
+        _camera.release();
+        std::cout << "Reopen.." << std::endl;
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        _camera.open(id, cv::CAP_ANY);
+        _camera.set(cv::CAP_PROP_FRAME_WIDTH,  1280);
+        _camera.set(cv::CAP_PROP_FRAME_HEIGHT, 720);
+    }
 
     if (!_csvFile) perror("Errore apertura file CSV");
     else
@@ -123,10 +144,11 @@ void DatasetRecorder::StartRecord(int sampleNumber)
         {
             if(sampleNumber > 0) {remainingSample--; std::cout << "Remaining samples: " << remainingSample << " \n";};
             // === FRAME CAMERA ===
-            cv::Mat frame, gray;
+            cv::Mat frame;
+            cv::Mat gray;
 
             _camera >> frame;   // cattura frame
-
+            std::cout << frame.size << std::endl;
             if (frame.empty()) continue;
 
             frame = frame(_roi);
@@ -137,6 +159,8 @@ void DatasetRecorder::StartRecord(int sampleNumber)
             std::string name = "img_" + std::to_string(recordedFrames) + ".png";
             auto path = _imageFilePath / name;
             std::cout << "Saving " << name << "\n";
+            std::cout << "Is Green " << ContainsPureGreenPixel(frame) << std::endl;
+
             cv::imwrite(path.string(), frame);
 
             KinovaLiralab::RobotState newState = _robot->GetRobotState();
@@ -200,6 +224,18 @@ void DatasetRecorder::StartRecord(int sampleNumber)
         std::cout << "CSV scritto: " << _csvFilePath.c_str() << "\n";
         std::cout << "Samples registrati: " << _robotStates.size() << "\n";
         });
+}
+
+bool DatasetRecorder::ContainsPureGreenPixel(const cv::Mat& frame)
+{
+    cv::Mat mask;
+    cv::inRange(
+        frame,
+        cv::Scalar(0, 100, 0),
+        cv::Scalar(0, 255, 0),
+        mask);
+
+    return cv::countNonZero(mask) > 0;
 }
 
 void DatasetRecorder::StopRecord()
