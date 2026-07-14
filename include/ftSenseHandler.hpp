@@ -12,6 +12,9 @@
 #include <iomanip>
 #include <unistd.h>
 #include <math.h>
+#include <Eigen/Dense>
+#include <Eigen/Geometry>
+#include "RobotState.hpp"
 
 /*
 
@@ -35,7 +38,9 @@ class CanDevice
     can_frame GetInFrame();
     bool IsWrenchReady();
     void GetWrench(double* wrench);
+    void GetWrenchCompensated(double* wrench, KinovaLiralab::RobotState robotState, bool subtract_gravity=true);
     void SetTare();
+    void InitCompensation(Eigen::Vector3d com_sensor_payload, Eigen::Isometry3d T_ee_sensor, double payload_mass);
 
     private: /* PRIVATE METHODS */
     void GetValues(unsigned short int *value);
@@ -54,59 +59,11 @@ class CanDevice
     bool set_tare = false;
 
     const uint32_t COMMAND_ID = 0x20D;
+
+    // For gravity compensation
+    bool compensationIsReady = false;
+    const Eigen::Vector3d g_world{0.0, 0.0, -9.81};
+    double payload_mass;                                // Payload mass after the sensor
+    Eigen::Vector3d com_sensor_payload;          // Payload CoM wrt force sensor [m]
+    Eigen::Isometry3d T_ee_sensor;               // sensor pose wrt EE
 };
-
-/*
-int main()
-{
-    constexpr uint32_t COMMAND_ID = 0x20D; // Sostituisci con quello corretto
-
-    CanDevice can;
-    double firstWrench[6];
-    bool isFirst = true;
-
-    if (!can.Open("can0")){
-        std::cerr << "Errore apertura CAN\n";
-        return -1;
-    }
-
-    can.StartTransmission();
-    can.BlockTransmission();
-    can.GetFullScale();
-    can.SetDataRate(1000000);
-    can.StartTransmission();
-    
-    while (true)
-    {
-        can.Receive();
-        if(can.IsWrenchReady())
-        {
-            double wrench[6];
-            can.GetWrench(wrench);
-            if(isFirst)
-            {
-                isFirst = false;
-                firstWrench[0] = wrench[0];
-                firstWrench[1] = wrench[1];
-                firstWrench[2] = wrench[2];
-                firstWrench[3] = wrench[3];
-                firstWrench[4] = wrench[4];
-                firstWrench[5] = wrench[5];
-            }
-            for(int i = 0; i < 6; i++)
-            {
-
-                if(i < 3){
-                    std::cout << "FORCE: " << wrench[i] - firstWrench[i]<< std::endl;
-                }
-                else{
-                    std::cout << "TORQUE: " << wrench[i] << std::endl;
-                }
-            }
-            //std::cout << "____" << std::endl;
-        }
-    }
-
-    return 0;
-}
-*/

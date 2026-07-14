@@ -171,7 +171,7 @@ int main(int argc, char **argv)
     if(argc < 2) {std::cerr << "\nMissing argument: ['Dataset Name']\n\n"; return -1;}
     
     TerminationHandler t;
-    KinovaLiralab::Robot* robot = new KinovaLiralab::Robot("/home/legion/ROS/kinova_ws/src/ros2_kortex/kortex_description/robots/gen3_ESAOTE_FTSense.urdf"); // _ESAOTE_convex_probe
+    KinovaLiralab::Robot* robot = new KinovaLiralab::Robot("/home/legion/ROS/kinova_ws/src/liralab_kinova/urdf/gen3_ESAOTE_FTSense.urdf"); // _ESAOTE_convex_probe
     DatasetRecorder datasetRecorder(static_cast<string>(argv[1]), robot);
 
     // Subscribe callbacks for CTRL-C signal

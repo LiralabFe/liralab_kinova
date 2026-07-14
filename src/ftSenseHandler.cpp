@@ -203,7 +203,84 @@
         return;
     }
     
+    void CanDevice::GetWrenchCompensated(double* wrench, KinovaLiralab::RobotState robotState, bool subtract_gravity)
+    {
+        for(int i = 0; i < 3; i++)
+        {
+            float scale = 1.0;
+            if(i == 0)
+            {
+                scale = 1566.0;
+            }
+            if(i == 1)
+            {
+                scale = 1776;
+            }
+            if(i == 2)
+            {
+                scale = 2122;
+            }
+            wrench[i] = in_force_pre_scale[i] * scale/pow(2,15) - scale - current_tare[i];
+        }
+
+        for(int i = 3; i < 6; i++)
+        {
+            wrench[i] = in_torque_pre_scale[i - 3] * scales_vect[i]/pow(2,15) - scales_vect[i] - current_tare[i];
+        }
+
+        if(set_tare)
+        {
+            for(int i = 0; i < 6; i++)
+                current_tare[i] = wrench[i];
+            set_tare = false;
+        }
+        
+        if(!compensationIsReady) {perror("Compensation is not ready. Call InitCompensation() before."); return;}
+
+        Eigen::Matrix3d R_world_sensor;
+
+        R_world_sensor <<
+            robotState._eePose[0], robotState._eePose[1], robotState._eePose[2],
+            robotState._eePose[4], robotState._eePose[5], robotState._eePose[6],
+            robotState._eePose[8], robotState._eePose[9], robotState._eePose[10];
+
+        Eigen::Vector3d g_sensor = R_world_sensor.transpose() * g_world;
+
+        Eigen::Vector3d Fg = payload_mass * g_sensor;
+        Eigen::Vector3d Tg = com_sensor_payload.cross(Fg);
+
+        if (subtract_gravity)
+        {
+            for(int i = 0; i < 3; i++)
+            {
+                wrench[i] = wrench[i] - Fg[i];
+                wrench[i+3] = wrench[i+3] - Tg[i];
+            }
+        }
+        else
+        {
+            for(int i = 0; i < 3; i++)
+            {
+                wrench[i] = wrench[i] + Fg[i];
+                wrench[i+3] = wrench[i+3] + Tg[i];
+            }
+        }
+
+        return;
+    }
+
     void CanDevice::SetTare(){set_tare = true;}
+
+    void CanDevice::InitCompensation(
+        Eigen::Vector3d com_sensor_payload,
+        Eigen::Isometry3d T_ee_sensor,
+        double payloadMass
+    )
+    {
+        this->com_sensor_payload = com_sensor_payload;
+        this->payload_mass = payloadMass;
+        this->compensationIsReady = true;
+    }
 
     void CanDevice::GetValues(unsigned short int *value){
         short int outgoing;

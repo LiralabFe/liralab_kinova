@@ -2,7 +2,7 @@
 #define TERMINATION_HANDLER
 #include <csignal>
 #include <functional>
-#include <vector>;
+#include <vector>
 
 class TerminationHandler
 {
