@@ -1,5 +1,4 @@
-#ifndef DATASET_RECORDER
-#define DATASET_RECORDER
+#pragma once
 
 #include <string>
 #include <stdio.h>
@@ -14,6 +13,7 @@
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/core/utils/filesystem.hpp>
 #include <filesystem>
+#include "ftSenseHandler.hpp"
 #include <thread>
 
 #ifdef _WIN32
@@ -34,9 +34,11 @@ private:
     cv::VideoCapture _camera;
     cv::Rect _roi;
     std::vector<KinovaLiralab::RobotState> _robotStates;
+    std::vector<double*> _forceStates;  // from force sensor
     std::vector<cv::Mat> _frames;
     std::atomic<bool> _stopRecording;
     std::thread _recordingThread;
+    CanDevice* forceSensor;
     
 public:
     DatasetRecorder(const std::string folderName, KinovaLiralab::Robot* robot);
@@ -53,17 +55,14 @@ DatasetRecorder::DatasetRecorder(const std::string folderName, KinovaLiralab::Ro
     if (!cv::utils::fs::createDirectories(folderName)) std::cerr << "Impossibile creare cartella: " << folderName << std::endl;
     if (!cv::utils::fs::createDirectories((std::filesystem::path(folderName) / "image").c_str())) std::cerr << "Impossibile creare cartella: " << _recordFolder << std::endl;
 
-    // 
+    // === CREATE CSV FILE ===
     _csvFilePath = std::filesystem::path(folderName) / (folderName + ".csv");
     _imageFilePath = std::filesystem::path(folderName) / "image";
     _csvFile = fopen(_csvFilePath.c_str(), "w");
     for (auto file : std::filesystem::directory_iterator(_imageFilePath)) // Remove all images in the directory
         std::filesystem::remove_all(file.path());
 
-    //int deviceID = 0;   // 0 = webcam default
-    //_camera.open(deviceID);
-    //_camera.set(cv::CAP_PROP_FRAME_WIDTH,  1280);
-    //_camera.set(cv::CAP_PROP_FRAME_HEIGHT, 720);
+    // === FIND THE CAMERA ===
     _roi = cv::Rect(335,125, 1100-335, 600-125);
     std::cout << "VERSION :" << CV_VERSION << std::endl;
 
@@ -90,6 +89,7 @@ DatasetRecorder::DatasetRecorder(const std::string folderName, KinovaLiralab::Ro
         }
     }
 
+    // === WAIT UNTIL NO GREEN PIXELs ARE DISPLAYED ===
     cv::Mat frame;
     while(true)
     {
@@ -103,17 +103,24 @@ DatasetRecorder::DatasetRecorder(const std::string folderName, KinovaLiralab::Ro
         _camera.set(cv::CAP_PROP_FRAME_HEIGHT, 720);
     }
 
+    // === OPEN CAN COMUNICATIONS ===
+    forceSensor = new CanDevice();
+
+    if(!forceSensor->Open("can0")) return;
+
     if (!_csvFile) perror("Errore apertura file CSV");
     else
     {
         fprintf(_csvFile,
             "timestamp,"
-            "q0,q1,q2,q3,q4,q5,q6,"
-            "v0,v1,v2,v3,v4,v5,v6,"
-            "t0,t1,t2,t3,t4,t5,t6,"
-            "x,y,z,"
-            "r11,r12,r13,r21,r22,r23,r31,r32,r33,"
-            "image\n"
+            "q0,q1,q2,q3,q4,q5,q6,"                     // joints positions
+            "v0,v1,v2,v3,v4,v5,v6,"                     // joints velocities
+            "t0,t1,t2,t3,t4,t5,t6,"                     // joints torques
+            "x,y,z,"                                    // ee position
+            "r11,r12,r13,r21,r22,r23,r31,r32,r33,"      // ee rotation matrix
+            "xForce,yForce,zForce,"                   // force sensor force
+            "xTorque,yTorque,zTorque,"                // force sensor torque
+            "image\n"                                   // captured frame
         );
         fflush(_csvFile);
     }
@@ -126,23 +133,39 @@ void DatasetRecorder::StartRecord(int sampleNumber)
     _stopRecording = false;
     _recordingThread = std::thread([this, sampleNumber]()
     {
+        /* WAIT FOR CAMERA TO OPEN */
         while(!_camera.isOpened())
         {
             std::this_thread::sleep_for(std::chrono::milliseconds(1000));
             std::cout << "Waiting for camera to open...\n";
         }
 
+        /* WAIT FOR FIRST CAN MSG */
+        while (!forceSensor->IsWrenchReady())
+        {
+            forceSensor->Receive();
+            std::cout << "Waiting for can msgs...\n";
+        }
+        
+
         using clock = std::chrono::high_resolution_clock;
         int remainingSample = sampleNumber;
         _robotStates.clear();
+        _forceStates.clear();
         std::vector<double> timestamps;
 
         auto t0 = clock::now();
 
         int recordedFrames = 0;
+        int32_t sampleTime = 100; // millis
+        double wrench[6];
+
         while ((sampleNumber > 0 && remainingSample > 0) || (sampleNumber <= 0 && !_stopRecording))
         {
             if(sampleNumber > 0) {remainingSample--; std::cout << "Remaining samples: " << remainingSample << " \n";};
+            forceSensor->Receive();
+            forceSensor->GetWrench(wrench);
+
             // === FRAME CAMERA ===
             cv::Mat frame;
             cv::Mat gray;
@@ -159,7 +182,6 @@ void DatasetRecorder::StartRecord(int sampleNumber)
             std::string name = "img_" + std::to_string(recordedFrames) + ".png";
             auto path = _imageFilePath / name;
             std::cout << "Saving " << name << "\n";
-            std::cout << "Is Green " << ContainsPureGreenPixel(frame) << std::endl;
 
             cv::imwrite(path.string(), frame);
 
@@ -169,9 +191,15 @@ void DatasetRecorder::StartRecord(int sampleNumber)
             double timestamp = std::chrono::duration<double>(now - t0).count();
 
             _robotStates.push_back(newState);
+            _forceStates.push_back(wrench);
             timestamps.push_back(timestamp);
 
-            std::this_thread::sleep_for(std::chrono::milliseconds(100)); // <-------------------------------------------------------------------- SAMPLE TIME !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+            /* Wait sample time and update CAN read in the meantime. Maybe is not usefull */
+            std::this_thread::sleep_for(std::chrono::milliseconds(sampleTime/2));
+            forceSensor->Receive();
+            std::this_thread::sleep_for(std::chrono::milliseconds(sampleTime/2));
+            forceSensor->Receive();
+
             recordedFrames++;
             if((recordedFrames % 10) == 0) std::cout << "Recorded: " << recordedFrames << std::endl;
         }
@@ -180,11 +208,13 @@ void DatasetRecorder::StartRecord(int sampleNumber)
 
         // === SCRITTURA CSV ===
         std::cout << "Robot States: " << _robotStates.size() << std::endl;
+        std::cout << "Force sensor states: " << _forceStates.size() << std::endl;
         std::cout << "Frames: " << _frames.size() << std::endl;
 
         for (size_t i = 0; i < _robotStates.size(); ++i)
         {
             const KinovaLiralab::RobotState& s = _robotStates[i];
+            const double* f = _forceStates[i];
 
             fprintf(_csvFile,
                 "%.6f,"
@@ -193,6 +223,8 @@ void DatasetRecorder::StartRecord(int sampleNumber)
                 "%f,%f,%f,%f,%f,%f,%f,"             // t0-t6
                 "%f,%f,%f,"                         // x y z
                 "%f,%f,%f,%f,%f,%f,%f,%f,%f,"       // R 3x3
+                "%f,%f,%f,"                         // force sensor [FORCE]
+                "%f,%f,%f,"                         // force sensor [TORQUE]
                 "%s\n",                             // ultrasound image
                 timestamps[i],
                 s._jointPositions[0], s._jointPositions[1], s._jointPositions[2],
@@ -205,6 +237,8 @@ void DatasetRecorder::StartRecord(int sampleNumber)
                 s._eePose[3], s._eePose[4], s._eePose[5],
                 s._eePose[6], s._eePose[7], s._eePose[8],
                 s._eePose[9], s._eePose[10], s._eePose[11],
+                f[0], f[1], f[2],
+                f[3], f[4], f[5],
                 ("img_" + std::to_string(i) + ".png").c_str()
             );
         }
@@ -223,7 +257,7 @@ void DatasetRecorder::StartRecord(int sampleNumber)
 
         std::cout << "CSV scritto: " << _csvFilePath.c_str() << "\n";
         std::cout << "Samples registrati: " << _robotStates.size() << "\n";
-        });
+    });
 }
 
 bool DatasetRecorder::ContainsPureGreenPixel(const cv::Mat& frame)
@@ -248,5 +282,3 @@ DatasetRecorder::~DatasetRecorder()
     if (_csvFile) fclose(_csvFile);
 }
 
-
-#endif

@@ -1,51 +1,34 @@
-#include <iostream>
-#include <cstring>
-#include <stdint.h>
-#include <sys/socket.h>
-#include <sys/ioctl.h>
-#include <unistd.h>
-#include <net/if.h>
-#include <linux/can.h>
-#include <linux/can/raw.h>
-#include <iomanip>
-#include<unistd.h>
-#include <math.h>
+    #include "ftSenseHandler.hpp"
 
-/*
-
-    Bisogna abilitare SocketCAN per vedere CAN0:
-    - sudo rmmod pcan
-    - sudo modprobe peak_usb
-    - sudo ip link set can0 up type can bitrate 1000000
-*/
-
-class CanDevice
-{
-public:
-    bool Open(const std::string& interfaceName)
+    bool CanDevice::Open(const std::string& interfaceName)
     {
         fd = socket(PF_CAN, SOCK_RAW, CAN_RAW);
 
-        if (fd < 0)
-            return false;
+        if (fd < 0) {PrintSuggestions(); return false;}
+
 
         struct ifreq ifr{};
         std::strcpy(ifr.ifr_name, interfaceName.c_str());
 
-        if (ioctl(fd, SIOCGIFINDEX, &ifr) < 0)
-            return false;
+        if (ioctl(fd, SIOCGIFINDEX, &ifr) < 0) {PrintSuggestions(); return false;}
 
         struct sockaddr_can addr{};
         addr.can_family = AF_CAN;
         addr.can_ifindex = ifr.ifr_ifindex;
 
-        if (bind(fd, (struct sockaddr*)&addr, sizeof(addr)) < 0)
-            return false;
+        if (bind(fd, (struct sockaddr*)&addr, sizeof(addr)) < 0) {PrintSuggestions(); return false;}
+
+
+        this->StartTransmission();
+        this->BlockTransmission();
+        this->GetFullScale();
+        this->SetDataRate(1000000);
+        this->StartTransmission();
 
         return true;
     }
 
-    bool Send(uint32_t id, uint8_t b0, uint8_t b1)
+    bool CanDevice::Send(uint32_t id, uint8_t b0, uint8_t b1)
     {
         struct can_frame frame{};
         frame.can_id = id;
@@ -56,7 +39,7 @@ public:
         return write(fd, &frame, sizeof(frame)) == sizeof(frame);
     }
 
-    int Receive()
+    int CanDevice::Receive()
     {
         bool result = read(fd, &in_frame, sizeof(in_frame)) > 0;
 
@@ -64,8 +47,8 @@ public:
         {
         case 0x3DA: //FORCE ID
         {
-            std::cout << std::hex << (unsigned short)in_frame.data[1] << std::endl;
-            std::cout << std::hex << (unsigned short)in_frame.data[0] << std::endl;
+            // std::cout << std::hex << (unsigned short)in_frame.data[1] << std::endl;
+            // std::cout << std::hex << (unsigned short)in_frame.data[0] << std::endl;
             unsigned short tmp;
             int currForce = 0;
             for (int i = 1; i < (unsigned short )in_frame.can_dlc; i = i + 2) {
@@ -107,7 +90,7 @@ public:
         return -1;
     }
 
-    void BlockTransmission()
+    void CanDevice::BlockTransmission()
     {
         Send(0x20D, 0x7, 0x1);
 
@@ -117,7 +100,7 @@ public:
             returnValue = Receive();
     }
 
-    void StartTransmission()
+    void CanDevice::StartTransmission()
     {
         Send(0x20D, 0x7, 0x0);
         int returnValue = Receive();
@@ -129,7 +112,7 @@ public:
         }
     }
 
-    void SetDataRate(int dataRate)
+    void CanDevice::SetDataRate(int dataRate)
     {
         __u8 data_rate = (__u8)dataRate;
 
@@ -140,7 +123,7 @@ public:
             returnValue = Receive();    
     }
 
-    void GetFullScale() {
+    void CanDevice::GetFullScale() {
               
         __u8 B0,B1;
         int return_value;
@@ -167,14 +150,14 @@ public:
                
     }
 
-    ~CanDevice()
+    CanDevice::~CanDevice()
     {
         if (fd >= 0)
             close(fd);
     }
-    can_frame GetInFrame() {return in_frame;}
+    can_frame CanDevice::GetInFrame() {return in_frame;}
 
-    bool IsWrenchReady() 
+    bool CanDevice::IsWrenchReady() 
     {
         if(force_readed && torque_readed)
         {
@@ -185,7 +168,7 @@ public:
         return false;
     }
     
-    void GetWrench(double* wrench)
+    void CanDevice::GetWrench(double* wrench)
     {
         for(int i = 0; i < 3; i++)
         {
@@ -220,90 +203,19 @@ public:
         return;
     }
     
-    void SetTare()
-    {
-        /*
-        BlockTransmission();
-        Send(0x20D, 0x15, 0x1);
-        int returnValue = Receive();
-        while ((returnValue != 1))
-            returnValue = Receive();
-        StartTransmission();
-        */
-       set_tare = true;
-    }
-    private:
+    void CanDevice::SetTare(){set_tare = true;}
 
-    void GetValues(unsigned short int *value){
+    void CanDevice::GetValues(unsigned short int *value){
         short int outgoing;
         outgoing = (((unsigned short )in_frame.data[2]) << 8) & 0xFF00;
         outgoing += ((unsigned short )in_frame.data[3]) & 0x00FF; 
-        if(in_frame.can_id == 0x3DA)
-        {
-            //std::cout << "FORCE: " << outgoing << std::endl;
-        }
         *value=outgoing;
     }
 
-    bool force_readed = false;
-    bool torque_readed = false;
-    int fd = -1;
-    uint16_t in_force_pre_scale[3];
-    uint16_t in_torque_pre_scale[3];
-    unsigned short scales_vect[6];
-    can_frame in_frame;
-    unsigned short in_value;
-    double current_tare[6];
-    bool set_tare = false;
-};
-
-int main()
-{
-    constexpr uint32_t COMMAND_ID = 0x20D; // Sostituisci con quello corretto
-
-    CanDevice can;
-
-    if (!can.Open("can0")){
-        std::cerr << "Errore apertura CAN\n";
-        return -1;
-    }
-
-    can.StartTransmission();
-    can.BlockTransmission();
-    can.GetFullScale();
-    can.SetDataRate(1000000);
-    can.StartTransmission();
-    
-    //can.SetTare();
-    int n = 0;
-    while (true)
+    void CanDevice::PrintSuggestions()
     {
-        n++;
-        if(n > 100)
-        {
-            std::cout << "-------------\n";
-            if(n == 101)
-                can.SetTare();
-        }
-        can.Receive();
-        if(can.IsWrenchReady())
-        {
-            double wrench[6];
-            can.GetWrench(wrench);
-
-            for(int i = 0; i < 6; i++)
-            {
-
-                if(i < 3){
-                    std::cout << "FORCE: " << wrench[i] << std::endl;
-                }
-                else{
-                    std::cout << "TORQUE: " << wrench[i] << std::endl;
-                }
-            }
-            //std::cout << "____" << std::endl;
-        }
+        perror("Cannot open CAN. Try with:"
+            "\n\tsudo rmmod pcan"
+            "\n\tsudo modprobe peak_usb"
+            "\n\tsudo ip link set can0 up type can bitrate 1000000\n");
     }
-
-    return 0;
-}

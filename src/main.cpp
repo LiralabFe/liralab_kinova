@@ -146,7 +146,7 @@ int main(int argc, char** argv)
 #include <RouterClient.h>
 #include <TransportClientTcp.h>
 #include <TransportClientUdp.h>
-#include <KinovaLiralab.hpp>
+#include "KinovaLiralab.hpp"
 #include <DatasetRecorder.hpp>
 #include <TerminationHandler.hpp>
 #include <SocketLiralab.hpp>
@@ -167,10 +167,11 @@ int main(int argc, char **argv)
     // ******************************************** 
     // *********** REGISTER NEW EPISODES **********
     // ********************************************
-    // if(argc < 2) {std::cerr << "\nMissing argument: ['Dataset Name']\n\n"; return -1;}
-    /*
+    
+    if(argc < 2) {std::cerr << "\nMissing argument: ['Dataset Name']\n\n"; return -1;}
+    
     TerminationHandler t;
-    KinovaLiralab::Robot* robot = new KinovaLiralab::Robot("/home/legion/ROS/kinova_ws/src/ros2_kortex/kortex_description/robots/gen3_ESAOTE_convex_probe.urdf"); // _ESAOTE_convex_probe
+    KinovaLiralab::Robot* robot = new KinovaLiralab::Robot("/home/legion/ROS/kinova_ws/src/ros2_kortex/kortex_description/robots/gen3_ESAOTE_FTSense.urdf"); // _ESAOTE_convex_probe
     DatasetRecorder datasetRecorder(static_cast<string>(argv[1]), robot);
 
     // Subscribe callbacks for CTRL-C signal
@@ -183,7 +184,7 @@ int main(int argc, char **argv)
     std::cin.get();
     datasetRecorder.StopRecord();
     robot->StopApp();
-    */    
+      
 
     // ********************************************
     // **************** RUN ACT *******************
