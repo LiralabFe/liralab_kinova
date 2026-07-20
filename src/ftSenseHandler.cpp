@@ -41,8 +41,10 @@
 
     int CanDevice::Receive()
     {
+        /* I Don't know wtf is this, just some ChatGPT stuff for rising a timeout error */
         bool result = read(fd, &in_frame, sizeof(in_frame)) > 0;
-
+        
+        /* From now on is the previous Receive */
         switch (in_frame.can_id)
         {
         case 0x3DA: //FORCE ID
@@ -88,6 +90,74 @@
         }
 
         return -1;
+    }
+
+
+    int CanDevice::ReceiveAllForceAndTorque()
+    {
+        struct can_frame frame;
+        bool received = false;
+
+        while (true)
+        {
+            ssize_t n = recv(fd, &frame, sizeof(frame), MSG_DONTWAIT);
+
+            if (n < 0)
+            {
+                // Coda vuota: è il comportamento atteso
+                if (errno == EAGAIN || errno == EWOULDBLOCK)
+                    break;
+
+                // Errore reale
+                return -1;
+            }
+
+            if (n != sizeof(struct can_frame))
+                continue;
+
+            received = true;
+
+            switch (frame.can_id)
+            {
+            case 0x3DA: // FORCE
+            {
+                int currForce = 0;
+
+                for (int i = 1; i < frame.can_dlc; i += 2)
+                {
+                    uint16_t tmp = ((uint16_t)frame.data[i] << 8) |
+                                    (uint16_t)frame.data[i - 1];
+
+                    in_force_pre_scale[currForce++] = tmp;
+                }
+
+                force_readed = true;
+                break;
+            }
+
+            case 0x3DB: // TORQUE
+            {
+                int currTorque = 0;
+
+                for (int i = 1; i < frame.can_dlc; i += 2)
+                {
+                    uint16_t tmp = ((uint16_t)frame.data[i] << 8) |
+                                    (uint16_t)frame.data[i - 1];
+
+                    in_torque_pre_scale[currTorque++] = tmp;
+                }
+
+                torque_readed = true;
+                break;
+            }
+
+            default:
+                // Ignora tutti gli altri messaggi
+                break;
+            }
+        }
+
+        return received ? 0 : 1;   // 0 = almeno un frame letto, 1 = nessun frame disponibile
     }
 
     void CanDevice::BlockTransmission()
@@ -200,6 +270,9 @@
             set_tare = false;
         }
         
+        wrench[0] *= -1.0;
+        wrench[3] *= -1.0;
+
         return;
     }
     
@@ -220,36 +293,36 @@
             {
                 scale = 2122;
             }
-            wrench[i] = in_force_pre_scale[i] * scale/pow(2,15) - scale - current_tare[i];
+            wrench[i] = in_force_pre_scale[i] * scale/pow(2,15) - scale;
         }
 
         for(int i = 3; i < 6; i++)
         {
-            wrench[i] = in_torque_pre_scale[i - 3] * scales_vect[i]/pow(2,15) - scales_vect[i] - current_tare[i];
+            wrench[i] = in_torque_pre_scale[i - 3] * scales_vect[i]/pow(2,15) - scales_vect[i];
         }
 
-        if(set_tare)
-        {
-            for(int i = 0; i < 6; i++)
-                current_tare[i] = wrench[i];
-            set_tare = false;
-        }
+        wrench[0] *= -1.0;
+        wrench[3] *= -1.0;
+
+        for(int i = 0; i < 6; i++)
+            wrench[i] -= current_tare[i];
         
         if(!compensationIsReady) {perror("Compensation is not ready. Call InitCompensation() before."); return;}
 
         Eigen::Matrix3d R_world_sensor;
 
+
         R_world_sensor <<
-            robotState._eePose[0], robotState._eePose[1], robotState._eePose[2],
-            robotState._eePose[4], robotState._eePose[5], robotState._eePose[6],
-            robotState._eePose[8], robotState._eePose[9], robotState._eePose[10];
+            robotState._eePose[3], robotState._eePose[4], robotState._eePose[5],
+            robotState._eePose[6], robotState._eePose[7], robotState._eePose[8],
+            robotState._eePose[9], robotState._eePose[10], robotState._eePose[11];
 
         Eigen::Vector3d g_sensor = R_world_sensor.transpose() * g_world;
 
         Eigen::Vector3d Fg = payload_mass * g_sensor;
         Eigen::Vector3d Tg = com_sensor_payload.cross(Fg);
 
-        if (subtract_gravity)
+        if (true)
         {
             for(int i = 0; i < 3; i++)
             {
@@ -266,6 +339,25 @@
             }
         }
 
+        if(set_tare)
+        {
+            for(int i = 0; i < 6; i++)
+                current_tare[i] = wrench[i];
+            set_tare = false;
+
+            for(int i = 0; i < 6; i++)
+                wrench[i] -= current_tare[i];
+        }
+
+        /*
+        const double rad2deg = 180.0 / M_PI;
+        Eigen::Vector3d xyz = R_world_sensor.eulerAngles(0,1,2);
+        std::cout << "XYZ:\n";
+        std::cout << "Roll  = " << xyz(0)*rad2deg << '\n';
+        std::cout << "Pitch = " << xyz(1)*rad2deg << '\n';
+        std::cout << "Yaw   = " << xyz(2)*rad2deg << '\n';
+        */
+       //printf("FG: %f, %f, %f", Fg[0], Fg[1], Fg[2]);
         return;
     }
 
@@ -295,4 +387,9 @@
             "\n\tsudo rmmod pcan"
             "\n\tsudo modprobe peak_usb"
             "\n\tsudo ip link set can0 up type can bitrate 1000000\n");
+    }
+
+    void CanDevice::PrintCurrentTare()
+    {
+        printf("TARE: %f, %f, %f", current_tare[0], current_tare[1], current_tare[2]);
     }

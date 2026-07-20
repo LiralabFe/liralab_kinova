@@ -67,7 +67,7 @@ DatasetRecorder::DatasetRecorder(const std::string folderName, KinovaLiralab::Ro
     std::cout << "VERSION :" << CV_VERSION << std::endl;
 
     int id;
-    for(id = 0; id < 6; id++)
+    for(id = 0; id < 20; id++)
     {
         _camera.open(id);
         _camera.set(cv::CAP_PROP_FRAME_WIDTH,  1280);
@@ -106,7 +106,15 @@ DatasetRecorder::DatasetRecorder(const std::string folderName, KinovaLiralab::Ro
     // === OPEN CAN COMUNICATIONS ===
     forceSensor = new CanDevice();
 
-    if(!forceSensor->Open("can0")) return;
+    if(!forceSensor->Open("can0")) {"Cannot open CAN";return;}
+
+    Eigen::Vector3d com_sensor_payload{0.0, 0.0, 0.08};
+    Eigen::Isometry3d T_ee_sensor = Eigen::Isometry3d::Identity();
+    Eigen::Vector3d translation(0.0, 0.0, 0.145);
+    T_ee_sensor = T_ee_sensor.translate(translation);
+    float payloadMass = 0.320 + 0.092;
+
+    forceSensor->InitCompensation(com_sensor_payload, T_ee_sensor, payloadMass);
 
     if (!_csvFile) perror("Errore apertura file CSV");
     else
@@ -124,6 +132,7 @@ DatasetRecorder::DatasetRecorder(const std::string folderName, KinovaLiralab::Ro
         );
         fflush(_csvFile);
     }
+    printf("-------------\nDATASET READY\n-------------");
 }
 
 
@@ -159,19 +168,18 @@ void DatasetRecorder::StartRecord(int sampleNumber)
         int recordedFrames = 0;
         int32_t sampleTime = 100; // millis
         double wrench[6];
+        
 
         while ((sampleNumber > 0 && remainingSample > 0) || (sampleNumber <= 0 && !_stopRecording))
         {
             if(sampleNumber > 0) {remainingSample--; std::cout << "Remaining samples: " << remainingSample << " \n";};
-            forceSensor->Receive();
-            forceSensor->GetWrench(wrench);
 
             // === FRAME CAMERA ===
             cv::Mat frame;
             cv::Mat gray;
 
             _camera >> frame;   // cattura frame
-            std::cout << frame.size << std::endl;
+
             if (frame.empty()) continue;
 
             frame = frame(_roi);
@@ -181,11 +189,15 @@ void DatasetRecorder::StartRecord(int sampleNumber)
             
             std::string name = "img_" + std::to_string(recordedFrames) + ".png";
             auto path = _imageFilePath / name;
-            std::cout << "Saving " << name << "\n";
 
             cv::imwrite(path.string(), frame);
 
+            if(recordedFrames == 0)
+                forceSensor->SetTare();
+
             KinovaLiralab::RobotState newState = _robot->GetRobotState();
+            forceSensor->ReceiveAllForceAndTorque();
+            forceSensor->GetWrenchCompensated(wrench, newState);
 
             auto now = clock::now();
             double timestamp = std::chrono::duration<double>(now - t0).count();
@@ -195,13 +207,10 @@ void DatasetRecorder::StartRecord(int sampleNumber)
             timestamps.push_back(timestamp);
 
             /* Wait sample time and update CAN read in the meantime. Maybe is not usefull */
-            std::this_thread::sleep_for(std::chrono::milliseconds(sampleTime/2));
-            forceSensor->Receive();
-            std::this_thread::sleep_for(std::chrono::milliseconds(sampleTime/2));
-            forceSensor->Receive();
+            std::this_thread::sleep_for(std::chrono::milliseconds(sampleTime));
+            //for(int i = 0; i < 2; i++) forceSensor->Receive();
 
             recordedFrames++;
-            if((recordedFrames % 10) == 0) std::cout << "Recorded: " << recordedFrames << std::endl;
         }
 
         std::cout << "Recording fermato. Scrittura CSV..." << std::endl;

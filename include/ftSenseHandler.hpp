@@ -30,6 +30,7 @@ class CanDevice
     bool Open(const std::string& interfaceName);
     bool Send(uint32_t id, uint8_t b0, uint8_t b1);
     int Receive();
+    int ReceiveAllForceAndTorque();
     void BlockTransmission();
     void StartTransmission();
     void SetDataRate(int dataRate);
@@ -41,6 +42,7 @@ class CanDevice
     void GetWrenchCompensated(double* wrench, KinovaLiralab::RobotState robotState, bool subtract_gravity=true);
     void SetTare();
     void InitCompensation(Eigen::Vector3d com_sensor_payload, Eigen::Isometry3d T_ee_sensor, double payload_mass);
+    void PrintCurrentTare();
 
     private: /* PRIVATE METHODS */
     void GetValues(unsigned short int *value);

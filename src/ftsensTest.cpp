@@ -24,8 +24,8 @@ class CanDevice
 public:
     bool Open(const std::string& interfaceName)
     {
+       
         fd = socket(PF_CAN, SOCK_RAW, CAN_RAW);
-
         if (fd < 0)
             return false;
 
@@ -42,6 +42,7 @@ public:
         if (bind(fd, (struct sockaddr*)&addr, sizeof(addr)) < 0)
             return false;
 
+        
         return true;
     }
 
@@ -64,8 +65,6 @@ public:
         {
         case 0x3DA: //FORCE ID
         {
-            std::cout << std::hex << (unsigned short)in_frame.data[1] << std::endl;
-            std::cout << std::hex << (unsigned short)in_frame.data[0] << std::endl;
             unsigned short tmp;
             int currForce = 0;
             for (int i = 1; i < (unsigned short )in_frame.can_dlc; i = i + 2) {
@@ -120,6 +119,7 @@ public:
     void StartTransmission()
     {
         Send(0x20D, 0x7, 0x0);
+
         int returnValue = Receive();
 
         //read pack untill the ack
@@ -263,6 +263,7 @@ int main()
 
     CanDevice can;
 
+    std::cout << "CIAO" << std::endl;
     if (!can.Open("can0")){
         std::cerr << "Errore apertura CAN\n";
         return -1;
@@ -282,8 +283,8 @@ int main()
         if(n > 100)
         {
             std::cout << "-------------\n";
-            if(n == 101)
-                can.SetTare();
+            //if(n == 101)
+            //    can.SetTare();
         }
         can.Receive();
         if(can.IsWrenchReady())
