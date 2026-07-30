@@ -41,7 +41,7 @@ class CanDevice
     void GetWrench(double* wrench);
     void GetWrenchCompensated(double* wrench, KinovaLiralab::RobotState robotState, bool subtract_gravity=true);
     void SetTare();
-    void InitCompensation(Eigen::Vector3d com_sensor_payload, Eigen::Isometry3d T_ee_sensor, double payload_mass);
+    void InitCompensation();
     void PrintCurrentTare();
 
     private: /* PRIVATE METHODS */

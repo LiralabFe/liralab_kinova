@@ -363,12 +363,14 @@
 
     void CanDevice::SetTare(){set_tare = true;}
 
-    void CanDevice::InitCompensation(
-        Eigen::Vector3d com_sensor_payload,
-        Eigen::Isometry3d T_ee_sensor,
-        double payloadMass
-    )
+    void CanDevice::InitCompensation()
     {
+        Eigen::Vector3d com_sensor_payload{0.0, 0.0, 0.08};
+        Eigen::Isometry3d T_ee_sensor = Eigen::Isometry3d::Identity();
+        Eigen::Vector3d translation(0.0, 0.0, 0.145);
+        T_ee_sensor = T_ee_sensor.translate(translation);
+        float payloadMass = 0.320 + 0.092;
+
         this->com_sensor_payload = com_sensor_payload;
         this->payload_mass = payloadMass;
         this->compensationIsReady = true;

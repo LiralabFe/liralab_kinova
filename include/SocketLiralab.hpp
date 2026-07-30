@@ -22,7 +22,7 @@ namespace KinovaLiralab
         SocketLiralab(uint16_t, std::function<void()>);
         ~SocketLiralab();
         void CloseSocket();
-        int WriteRobotState(const KinovaLiralab::RobotState&);
+        int WriteRobotState(const KinovaLiralab::RobotState&, double* wrench);
         int Write(const std::string&);
         auto Read() -> std::string;
         int ReadFrame(KDL::Frame&);
@@ -46,7 +46,7 @@ namespace KinovaLiralab
         if (_client < 0) {perror("accept");return;}
     }
 
-    int SocketLiralab::WriteRobotState(const KinovaLiralab::RobotState& robotState)
+    int SocketLiralab::WriteRobotState(const KinovaLiralab::RobotState& robotState, double* wrench)
     {
         std::string msg{""};
         for(auto f : robotState._eePose)
@@ -54,7 +54,12 @@ namespace KinovaLiralab
             msg.append(std::to_string(f));
             msg.append(";");
         }
-        std::cout << ">>> " << msg << "\n";
+        //for(int i = 0; i < 3; i++)
+        //{
+        //    msg.append(std::to_string(wrench[i]));
+        //    msg.append(";");
+        //}
+        //std::cout << ">>> " << msg << "\n";
         return Write(msg);
     }
 
@@ -74,7 +79,7 @@ namespace KinovaLiralab
         ssize_t bytes = recv(_client, buffer, sizeof(buffer) - 1, 0);
         if (bytes <= 0) { perror("recv");return ""; }
         std::string received(buffer);
-        std::cout << "<<< " << received << "\n";
+        //std::cout << "<<< " << received << "\n";
         return received;
     }
 

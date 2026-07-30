@@ -763,12 +763,19 @@ namespace KinovaLiralab
 
         int ikRes = _ikSolver->CartToJnt(qCurr,ee,eqNew);
         if(ikRes != 0) std::cout << ikRes << "\n";
+        std::cout << eqNew(4) * 180.0 / M_PI << " ---> " << ee.p[0] << ", " << ee.p[1] << ", " <<  ee.p[2] << std::endl;
+
         //std::cout << eqNew(0) << "\n" << eqNew(1) << "\n" << eqNew(2) 
         // std::cout << "[OLD EE POSE]: " << eeCurrent[0] << ", " << eeCurrent[1] << ", " << eeCurrent[2] << "\n[EQ POSE UPDATE]: " << ee.p[0] << ", " << ee.p[1] << ", " << ee.p[2] << "\n";
 
         _meeEquilibriumPose.lock();
-            for(int i = 0; i < 7; i++)
-                _equilibriumJointPosition(i) = eqNew(i);
+        for(int i = 0; i < 7; i++)
+        {
+            double diff = eqNew(i) - _equilibriumJointPosition(i); // riferimento: equilibrio precedente (continuo)
+            while(diff >  M_PI) { eqNew(i) -= 2.0*M_PI; diff -= 2.0*M_PI; }
+            while(diff < -M_PI) { eqNew(i) += 2.0*M_PI; diff += 2.0*M_PI; }
+            _equilibriumJointPosition(i) = eqNew(i);
+        }
                 _equilibriumEEPosition = KDL::Frame(ee);
         _meeEquilibriumPose.unlock();
     }

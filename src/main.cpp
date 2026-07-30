@@ -147,6 +147,7 @@ int main(int argc, char** argv)
 #include <TransportClientTcp.h>
 #include <TransportClientUdp.h>
 #include "KinovaLiralab.hpp"
+#include "ftSenseHandler.hpp"
 #include <DatasetRecorder.hpp>
 #include <TerminationHandler.hpp>
 #include <SocketLiralab.hpp>
@@ -167,33 +168,36 @@ int main(int argc, char **argv)
     // ******************************************** 
     // *********** REGISTER NEW EPISODES **********
     // ********************************************
-    
-    if(argc < 2) {std::cerr << "\nMissing argument: ['Dataset Name']\n\n"; return -1;}
-    
-    TerminationHandler t;
-    KinovaLiralab::Robot* robot = new KinovaLiralab::Robot("/home/legion/ROS/kinova_ws/src/liralab_kinova/urdf/gen3_ESAOTE_FTSense.urdf"); // _ESAOTE_convex_probe
-    DatasetRecorder datasetRecorder(static_cast<string>(argv[1]), robot);
+    {
+        /*
+        if(argc < 2) {std::cerr << "\nMissing argument: ['Dataset Name']\n\n"; return -1;}
+        
+        TerminationHandler t;
+        KinovaLiralab::Robot* robot = new KinovaLiralab::Robot("/home/legion/ROS/kinova_ws/src/liralab_kinova/urdf/gen3_ESAOTE_FTSense.urdf"); // _ESAOTE_convex_probe
+        DatasetRecorder datasetRecorder(static_cast<string>(argv[1]), robot);
 
-    // Subscribe callbacks for CTRL-C signal
-    TerminationHandler::RegisterCallback([&robot](){robot->StopApp();});
-    TerminationHandler::RegisterCallback([&datasetRecorder](){datasetRecorder.StopRecord();});
-    
-    robot->StartHandGuidance();
-    std::cin.get();
-    datasetRecorder.StartRecord(600);   
-    std::cin.get();
-    datasetRecorder.StopRecord();
-    robot->StopApp();
-      
+        // Subscribe callbacks for CTRL-C signal
+        TerminationHandler::RegisterCallback([&robot](){robot->StopApp();});
+        TerminationHandler::RegisterCallback([&datasetRecorder](){datasetRecorder.StopRecord();});
+        
+        robot->StartHandGuidance();
+        std::cin.get();
+        datasetRecorder.StartRecord(600);   
+        std::cin.get();
+        datasetRecorder.StopRecord();
+        robot->StopApp();
+        */
+    } 
 
     // ********************************************
     // **************** RUN ACT *******************
     // ********************************************
+    {
     
-    /*
     TerminationHandler t;
-    KinovaLiralab::Robot* robot = new KinovaLiralab::Robot("/home/legion/ROS/kinova_ws/src/ros2_kortex/kortex_description/robots/gen3_ESAOTE_convex_probe.urdf"); // _ESAOTE_convex_probe
-    KinovaLiralab::SocketLiralab socket{5000, [&robot]{robot->StopApp();}};
+    //CanDevice* forceSensor = new CanDevice();
+    KinovaLiralab::Robot* robot = new KinovaLiralab::Robot("/home/legion/ROS/kinova_ws/src/liralab_kinova/urdf/gen3_ESAOTE_FTSense.urdf"); // _ESAOTE_convex_probe
+    KinovaLiralab::SocketLiralab socket{5005, [&robot]{robot->StopApp();}};
 
     // Subscribe callbacks for CTRL-C signal
     TerminationHandler::RegisterCallback([&robot](){robot->StopApp();});
@@ -203,10 +207,17 @@ int main(int argc, char **argv)
     robot->StartHandGuidance();
     std::cin.get();
 
+    // ---------- Connect CAN
+    //if(!forceSensor->Open("can0")) {std::cout << "Cannot open CAN\n" << std::endl;return -1;}
+    //else std::cout << "CAN Opened\n" << std::endl;
+    //forceSensor->InitCompensation();
+    //bool setTare = true;
+    double sensorWrench[6];
+
     // ---------- Send initial position
     std::this_thread::sleep_for(std::chrono::milliseconds(1000));
     KinovaLiralab::RobotState state = robot->GetRobotState();
-    socket.WriteRobotState(state);
+    socket.WriteRobotState(state, sensorWrench); // sensorWrench is not usefull
 
     // ---------- Wait acknoledge from python
     while(socket.Read() != "RUN");
@@ -216,8 +227,16 @@ int main(int argc, char **argv)
     KDL::Frame newFrame{};
     while(true)
     {
+        //if(setTare)
+        //{
+        //    setTare = false;
+        //    forceSensor->SetTare();
+        //}
+
         KinovaLiralab::RobotState state = robot->GetRobotState();
-        socket.WriteRobotState(state);
+        //forceSensor->ReceiveAllForceAndTorque();
+        //forceSensor->GetWrenchCompensated(sensorWrench, state);
+        socket.WriteRobotState(state, sensorWrench);
         
         if(socket.ReadFrame(newFrame) < 0) break;
 
@@ -226,11 +245,24 @@ int main(int argc, char **argv)
     
     std::cin.get();
     robot->StopApp();
-    */
+    
+    }
+
+    // ********************************************
+    // ************** Z FORCE CONTROL *************
+    // ********************************************
+    {
+        /*
+        TerminationHandler t;
+        KinovaLiralab::Robot* robot = new KinovaLiralab::Robot("/home/legion/ROS/kinova_ws/src/liralab_kinova/urdf/gen3_ESAOTE_FTSense.urdf"); // _ESAOTE_convex_probe
+        TerminationHandler::RegisterCallback([&robot](){robot->StopApp();});
+        */
+    }
 
     // ********************************************
     // **************** AUROVAS KINOVA ************
     // ********************************************
+    {
     /*
     TerminationHandler t;
     AurovasSocket socket;
@@ -291,6 +323,7 @@ int main(int argc, char **argv)
     
     robot->StopApp();
     */
+    }
     // robot->StopApp();
 
     

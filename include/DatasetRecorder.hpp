@@ -67,7 +67,7 @@ DatasetRecorder::DatasetRecorder(const std::string folderName, KinovaLiralab::Ro
     std::cout << "VERSION :" << CV_VERSION << std::endl;
 
     int id;
-    for(id = 0; id < 20; id++)
+    for(id = 0; id < 30; id++)
     {
         _camera.open(id);
         _camera.set(cv::CAP_PROP_FRAME_WIDTH,  1280);
@@ -108,13 +108,7 @@ DatasetRecorder::DatasetRecorder(const std::string folderName, KinovaLiralab::Ro
 
     if(!forceSensor->Open("can0")) {"Cannot open CAN";return;}
 
-    Eigen::Vector3d com_sensor_payload{0.0, 0.0, 0.08};
-    Eigen::Isometry3d T_ee_sensor = Eigen::Isometry3d::Identity();
-    Eigen::Vector3d translation(0.0, 0.0, 0.145);
-    T_ee_sensor = T_ee_sensor.translate(translation);
-    float payloadMass = 0.320 + 0.092;
-
-    forceSensor->InitCompensation(com_sensor_payload, T_ee_sensor, payloadMass);
+    forceSensor->InitCompensation();
 
     if (!_csvFile) perror("Errore apertura file CSV");
     else
@@ -206,9 +200,7 @@ void DatasetRecorder::StartRecord(int sampleNumber)
             _forceStates.push_back(wrench);
             timestamps.push_back(timestamp);
 
-            /* Wait sample time and update CAN read in the meantime. Maybe is not usefull */
             std::this_thread::sleep_for(std::chrono::milliseconds(sampleTime));
-            //for(int i = 0; i < 2; i++) forceSensor->Receive();
 
             recordedFrames++;
         }
