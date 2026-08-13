@@ -11,6 +11,7 @@ namespace KinovaLiralab
         std::vector<float> _jointVels;      // size 7
         std::vector<float> _jointTorques;   // size 7
         std::vector<float> _eePose;         // size 12
+        std::vector<float> _eeVel;          // size 3
     };
 }
 

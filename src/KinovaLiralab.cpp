@@ -734,7 +734,7 @@ namespace KinovaLiralab
         /*
         X min max [0.18     0.54]
         Y min max [-0.3     0.22]
-        Z min max [0.17     0.63]
+        Z min max [0.30     0.63]
         */
 
         KinovaLiralab::RobotState currentState = GetRobotState();
@@ -746,10 +746,10 @@ namespace KinovaLiralab
         // Bounding Box -----
         if(ee.p[0] < 0.18 || ee.p[0] > 0.54) std::cout << "Clamping " << ee.p[0] << " (X coord).\n";
         if(ee.p[1] < -0.3 || ee.p[1] > 0.22) std::cout << "Clamping " << ee.p[1] << " (Y coord).\n";
-        if(ee.p[2] < 0.17 || ee.p[2] > 0.63) std::cout << "Clamping " << ee.p[2] << " (Z coord).\n";
+        if(ee.p[2] < 0.30 || ee.p[2] > 0.63) std::cout << "Clamping " << ee.p[2] << " (Z coord).\n";
         ee.p[0] = std::clamp(ee.p[0], 0.18, 0.54);
         ee.p[1] = std::clamp(ee.p[1], -0.3, 0.22);
-        ee.p[2] = std::clamp(ee.p[2], 0.17, 0.63);
+        ee.p[2] = std::clamp(ee.p[2], 0.30, 0.63);
 
         float distance = (ee.p - eeCurrent).Norm();
         if(distance > 0.06)
@@ -762,8 +762,6 @@ namespace KinovaLiralab
             qCurr(i) = currentState._jointPositions[i];
 
         int ikRes = _ikSolver->CartToJnt(qCurr,ee,eqNew);
-        if(ikRes != 0) std::cout << ikRes << "\n";
-        std::cout << eqNew(4) * 180.0 / M_PI << " ---> " << ee.p[0] << ", " << ee.p[1] << ", " <<  ee.p[2] << std::endl;
 
         //std::cout << eqNew(0) << "\n" << eqNew(1) << "\n" << eqNew(2) 
         // std::cout << "[OLD EE POSE]: " << eeCurrent[0] << ", " << eeCurrent[1] << ", " << eeCurrent[2] << "\n[EQ POSE UPDATE]: " << ee.p[0] << ", " << ee.p[1] << ", " << ee.p[2] << "\n";
@@ -982,8 +980,28 @@ namespace KinovaLiralab
         eePose[10] = (eePoseFrame.M.data[7]);
         eePose[11] = (eePoseFrame.M.data[8]);
 
+        auto currentTime = std::chrono::steady_clock::now();
+        double dt = 0;
+        if (!_firstDt)
+            dt = std::chrono::duration<double>(currentTime - _previousTime).count();
+        else
+            _firstDt = false;
+        _previousTime = currentTime;
 
         _mRobotState.lock();
+
+        if (dt > 0.0)
+        {
+            _robotState._eeVel[0] = (eePose[0] - _robotState._eePose[0]) / dt;
+            _robotState._eeVel[1] = (eePose[1] - _robotState._eePose[1]) / dt;
+            _robotState._eeVel[2] = (eePose[2] - _robotState._eePose[2]) / dt;
+        }
+        else
+        {
+            _robotState._eeVel[0] = 0.0;
+            _robotState._eeVel[1] = 0.0;
+            _robotState._eeVel[2] = 0.0;
+        }
 
         _robotState._jointPositions = jointPositions;
         _robotState._eePose = eePose;

@@ -67,7 +67,7 @@ DatasetRecorder::DatasetRecorder(const std::string folderName, KinovaLiralab::Ro
     std::cout << "VERSION :" << CV_VERSION << std::endl;
 
     int id;
-    for(id = 0; id < 30; id++)
+    for(id = 0; id < 50; id++)
     {
         _camera.open(id);
         _camera.set(cv::CAP_PROP_FRAME_WIDTH,  1280);
@@ -193,11 +193,17 @@ void DatasetRecorder::StartRecord(int sampleNumber)
             forceSensor->ReceiveAllForceAndTorque();
             forceSensor->GetWrenchCompensated(wrench, newState);
 
+            double* wrenchCopy = new double[6];
+
+            for (int i = 0; i < 6; ++i)
+                wrenchCopy[i] = wrench[i];
+
+
             auto now = clock::now();
             double timestamp = std::chrono::duration<double>(now - t0).count();
 
             _robotStates.push_back(newState);
-            _forceStates.push_back(wrench);
+            _forceStates.push_back(wrenchCopy);
             timestamps.push_back(timestamp);
 
             std::this_thread::sleep_for(std::chrono::milliseconds(sampleTime));

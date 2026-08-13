@@ -112,10 +112,13 @@ namespace KinovaLiralab
 
         KinovaLiralab::RobotState _robotState{
             std::vector<float>(7, 0.0f),   // _jointPositions
-            std::vector<float>(12, 0.0f),  // _eePose
             std::vector<float>(7, 0.0f),   // _jointTorques
-            std::vector<float>(7, 0.0f)    // _jointVels
+            std::vector<float>(7, 0.0f),   // _jointVels
+            std::vector<float>(12, 0.0f),  // _eePose
+            std::vector<float>(3, 0.0f),     // _eeVel
         };
+        std::chrono::steady_clock::time_point _previousTime;
+        bool _firstDt = true;
 
 
         public:
